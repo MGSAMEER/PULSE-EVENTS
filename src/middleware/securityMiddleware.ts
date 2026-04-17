@@ -107,6 +107,7 @@ export const corsOptions = {
 
 // Helmet configuration
 export const helmetConfig = helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
