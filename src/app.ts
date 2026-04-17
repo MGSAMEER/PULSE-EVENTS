@@ -9,6 +9,13 @@ import logger from './utils/logger';
 
 const app = express();
 
+// CORS configuration
+app.use(cors(corsOptions));
+
+// Body parsing (Reduced limits for security)
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
 // Security middleware
 app.use(helmetConfig);
 
@@ -58,13 +65,6 @@ app.use((req, res, next) => {
   // Tag request for potential audit trailing
   next();
 });
-
-// CORS configuration
-app.use(cors(corsOptions));
-
-// Body parsing (Reduced limits for security)
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Routes
 app.use('/api', routes);

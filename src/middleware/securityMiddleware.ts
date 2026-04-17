@@ -92,7 +92,7 @@ export const corsOptions = {
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
       : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173']; 
     
-    if (!origin || whitelist.includes(origin) || process.env.NODE_ENV !== 'production') {
+    if (!origin || whitelist.includes(origin) || /\.vercel\.app$/.test(origin) || process.env.NODE_ENV !== 'production') {
       callback(null, true);
     } else {
       logger.error(`CORS Blocked: Origin ${origin} is not in whitelist`);
