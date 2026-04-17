@@ -14,14 +14,14 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 export const googleLogin: RequestHandler = async (req, res) => {
   try {
-    const { token } = req.body;
+    const { credential } = req.body;
     
-    if (!token) {
-        throw new AppError('Neural link token missing', 400);
+    if (!credential) {
+        throw new AppError('Neural link credential missing', 400);
     }
 
     const ticket = await client.verifyIdToken({
-      idToken: token,
+      idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
