@@ -9,9 +9,13 @@ import { ApiResponseUtil } from '../utils/response';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  logger.error('CRITICAL: Razorpay API keys are missing in the environment grid.');
+}
+
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
+  key_id: process.env.RAZORPAY_KEY_ID || 'dummy_id',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_secret',
 });
 
 export const createOrder = async (req: Request, res: Response) => {
@@ -67,7 +71,11 @@ export const createOrder = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     if (error instanceof AppError) throw error;
-    logger.error(`Order creation failure: ${error.message}`);
+    logger.error('Order creation failure detailed:', { 
+      message: error.message, 
+      stack: error.stack,
+      raw: JSON.stringify(error)
+    });
     throw new AppError('Payment engine synchronization failed', 500);
   }
 };
