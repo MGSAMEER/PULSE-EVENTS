@@ -15,8 +15,12 @@ const getTransporter = () => {
       port,
       secure: port === 465 || process.env.SMTP_SECURE === 'true', 
       auth: { user, pass },
-      connectionTimeout: 10000, // 10s connection timeout
-      greetingTimeout: 5000,    // 5s greeting timeout
+      tls: {
+        rejectUnauthorized: false // Bypass SSL verification for cloud proxy compatibility
+      },
+      connectionTimeout: 20000, // 20s connection timeout
+      greetingTimeout: 15000,   // 15s greeting timeout
+      socketTimeout: 30000,     // 30s socket timeout
     });
   }
   return transporterInstance;
