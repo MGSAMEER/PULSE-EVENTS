@@ -7,18 +7,18 @@ const getTransporter = () => {
   const user = (process.env.EMAIL_USER || '').trim();
   const pass = (process.env.EMAIL_PASS || '').trim();
 
-  // Return a fresh transporter to ensure clean state
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // SSL/TLS
+    port: 587,
+    secure: false, // Use STARTTLS on port 587
     auth: { user, pass },
     tls: {
-      rejectUnauthorized: false // Helps avoid SSL handshake issues in cloud proxies
+      rejectUnauthorized: false, // Critical for cloud proxy compatibility
+      minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 10000, // 10s
-    greetingTimeout: 10000,   // 10s
-    socketTimeout: 20000      // 20s
+    connectionTimeout: 15000, // 15s
+    greetingTimeout: 15000,   // 15s
+    socketTimeout: 30000      // 30s
   });
 };
 
