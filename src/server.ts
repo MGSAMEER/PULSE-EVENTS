@@ -1,4 +1,8 @@
 import 'dotenv/config';
+import dns from 'dns';
+
+// Force IPv4 as priority to resolve ENETUNREACH/IPv6 routing issues on Railway
+dns.setDefaultResultOrder('ipv4first');
 
 import app from './app';
 import connectDB from './config/database';

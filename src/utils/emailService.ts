@@ -1,40 +1,52 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import logger from './logger';
 
-const resend = new Resend((process.env.RESEND_API_KEY || '').trim());
+// Hardened Transporter with IPv4 preference (via global server fix)
+// and strict Port 465 SSL settings for Railway compatibility.
+const getTransporter = () => {
+  const user = (process.env.EMAIL_USER || '').trim();
+  const pass = (process.env.EMAIL_PASS || '').trim();
 
-// From Address - Note: For testing, Resend only allows 'onboarding@resend.dev' 
-// unless a domain is verified.
-const FROM_ADDRESS = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  // Return a fresh transporter to ensure clean state
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // SSL/TLS
+    auth: { user, pass },
+    tls: {
+      rejectUnauthorized: false // Helps avoid SSL handshake issues in cloud proxies
+    },
+    connectionTimeout: 10000, // 10s
+    greetingTimeout: 10000,   // 10s
+    socketTimeout: 20000      // 20s
+  });
+};
 
 export const sendVerificationEmail = async (email: string, token: string) => {
   try {
+    const transporter = getTransporter();
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
     const verificationUrl = `${frontendUrl}/verify-email/${token}`;
-    
-    const { data, error } = await resend.emails.send({
-      from: `Pulse Platform <${FROM_ADDRESS}>`,
-      to: [email],
+
+    const mailOptions = {
+      from: `"PULSE Platform" <${process.env.EMAIL_USER}>`,
+      to: email,
       subject: 'Verify your PULSE Account',
       html: `
         <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
           <h1 style="color: #6366f1;">Welcome to PULSE</h1>
-          <p>You're almost there! Click the button below to activate your account and join the mission.</p>
+          <p>Click the button below to activate your account and join the mission.</p>
           <a href="${verificationUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Verify Account</a>
           <p style="color: #666; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
         </div>
       `,
-    });
+    };
 
-    if (error) {
-      logger.error('Resend Verification Error:', error);
-      return false;
-    }
-
-    logger.info(`Verification email dispatched to ${email} via Resend [${data?.id}]`);
+    const result = await transporter.sendMail(mailOptions);
+    logger.info(`Verification email sent to ${email} [${result.messageId}]`);
     return true;
   } catch (error: any) {
-    logger.error(`Resend failure for ${email}: ${error.message}`);
+    logger.error(`SMTP Verification failure for ${email}: ${error.message}`);
     return false;
   }
 };
@@ -47,15 +59,20 @@ export const sendBookingConfirmation = async (
   pdfBuffer: Buffer
 ) => {
   try {
-    const { data, error } = await resend.emails.send({
-      from: `Pulse Orders <${FROM_ADDRESS}>`,
-      to: [email],
+    const transporter = getTransporter();
+
+    const mailOptions = {
+      from: `"PULSE Orders" <${process.env.EMAIL_USER}>`,
+      to: email,
       subject: `Your Mission Pass: ${eventName}`,
       html: `
         <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
           <h1 style="color: #6366f1;">Mission Confirmed</h1>
           <p>Your booking for <strong>${eventName}</strong> is secured.</p>
           <p>Booking ID: <code style="background: #1a1a1a; padding: 4px 8px; border-radius: 4px;">${bookingId}</code></p>
+          <div style="background: #ffffff; padding: 20px; display: inline-block; border-radius: 8px; margin: 20px 0;">
+             <img src="cid:qrcode" alt="QR Code" width="150" height="150" />
+          </div>
           <p>Find your E-Ticket attached as a PDF to this email.</p>
           <p style="color: #666; font-size: 12px;">See you at the drop-off point.</p>
         </div>
@@ -68,59 +85,57 @@ export const sendBookingConfirmation = async (
         {
           filename: 'qrcode.png',
           content: qrCodeBuffer,
+          cid: 'qrcode'
         }
       ],
-    });
+    };
 
-    if (error) {
-      logger.error('Resend Confirmation Error:', error);
-      throw error;
-    }
-
-    logger.info(`Confirmation email dispatched for booking ${bookingId} [${data?.id}]`);
+    const result = await transporter.sendMail(mailOptions);
+    logger.info(`Booking confirmation sent to ${email} [${result.messageId}]`);
   } catch (error: any) {
-    logger.error(`Resend failure for ${bookingId}: ${error.message}`);
+    logger.error(`SMTP Booking failure for ${bookingId}: ${error.message}`);
     throw error;
   }
 };
 
 export const sendEventReminder = async (email: string, eventName: string, eventDate: string) => {
   try {
-    await resend.emails.send({
-      from: `Pulse Reminders <${FROM_ADDRESS}>`,
-      to: [email],
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from: `"PULSE Reminders" <${process.env.EMAIL_USER}>`,
+      to: email,
       subject: `Reminder: ${eventName} is coming up!`,
       html: `<p>Your mission for <strong>${eventName}</strong> starts on ${eventDate}. Check your tickets in the portal.</p>`,
     });
   } catch (error: any) {
-    logger.error(`Reminder failure for ${email}: ${error.message}`);
+    logger.error(`SMTP Reminder failure for ${email}: ${error.message}`);
   }
 };
 
 export const sendBulkAnnouncement = async (emails: string[], subject: string, message: string) => {
   try {
-    // Resend allows batching or sending to multiple recipients in the 'to' array (limitations apply)
-    await resend.emails.send({
-      from: `Pulse Broadcast <${FROM_ADDRESS}>`,
-      to: emails,
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from: `"PULSE Broadcast" <${process.env.EMAIL_USER}>`,
+      to: emails.join(','),
       subject: `[Pulse Announcement] ${subject}`,
       html: `<div>${message}</div>`,
     });
     logger.info(`Bulk announcement dispatched to ${emails.length} nodes`);
   } catch (error: any) {
-    logger.error(`Bulk failure: ${error.message}`);
+    logger.error(`SMTP Bulk failure: ${error.message}`);
   }
 };
 
 export const sendForgotPasswordEmail = async (email: string, token: string) => {
-
   try {
+    const transporter = getTransporter();
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
     const resetUrl = `${frontendUrl}/reset-password/${token}`;
     
-    await resend.emails.send({
-      from: `Pulse Security <${FROM_ADDRESS}>`,
-      to: [email],
+    await transporter.sendMail({
+      from: `"PULSE Security" <${process.env.EMAIL_USER}>`,
+      to: email,
       subject: 'Password Reset Request',
       html: `
         <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
@@ -134,7 +149,7 @@ export const sendForgotPasswordEmail = async (email: string, token: string) => {
     
     return true;
   } catch (error: any) {
-    logger.error(`Resend reset failure for ${email}: ${error.message}`);
+    logger.error(`SMTP Reset failure for ${email}: ${error.message}`);
     return false;
   }
 };
