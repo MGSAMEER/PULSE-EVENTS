@@ -13,9 +13,13 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
   logger.error('CRITICAL: Razorpay API keys are missing in the environment grid.');
 }
 
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  logger.error('CRITICAL: Razorpay API keys are missing! Using dummy trial keys which will FAIL in production.');
+}
+
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'dummy_id',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_secret',
+  key_id: process.env.RAZORPAY_KEY_ID || 'RAZORPAY_NOT_SET',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'RAZORPAY_NOT_SET',
 });
 
 export const createOrder = async (req: Request, res: Response) => {
