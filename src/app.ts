@@ -12,6 +12,12 @@ const app = express();
 // Enable trust proxy for Railway/Vercel environments (Fixes rate limiting IP detection)
 app.set('trust proxy', 1);
 
+// Debug logging for every request in production
+app.use((req, res, next) => {
+  logger.info(`HTTP Request: ${req.method} ${req.originalUrl} from ${req.ip}`);
+  next();
+});
+
 // CORS configuration
 app.use(cors(corsOptions));
 

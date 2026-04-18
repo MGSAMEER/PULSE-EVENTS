@@ -101,8 +101,14 @@ export const register: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`User registered: ${email} [${user.role}]. Verification token generated.`);
 
-    const verificationLink = `http://localhost:3000/verify-email/${verificationToken}`;
-    await sendVerificationEmail(email, verificationLink);
+    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
+    
+    // Attempt email delivery gracefully (prevents 500 error if SMTP times out)
+    try {
+      await sendVerificationEmail(normalizedEmail, verificationLink);
+    } catch (mailError) {
+      logger.error(`Registration succeeded but verification email failed for ${normalizedEmail}: ${mailError}`);
+    }
 
     return ApiResponseUtil.success(res, 'Registration successful. Please verify your email to continue.', { 
       user: { 
