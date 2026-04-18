@@ -4,15 +4,20 @@ import logger from './logger';
 // Hardened Transporter with IPv4 preference (via global server fix)
 // and strict Port 465 SSL settings for Railway compatibility.
 const getTransporter = () => {
-  const user = (process.env.EMAIL_USER || '').trim();
-  const pass = (process.env.EMAIL_PASS || '').trim();
+  // Check for credentials under both common naming patterns
+  const user = (process.env.SMTP_USER || process.env.EMAIL_USER || '').trim();
+  const pass = (process.env.SMTP_PASS || process.env.EMAIL_PASS || '').trim();
+  
+  // Honor Railway variables but fallback to 587 if not specified
+  const port = parseInt(process.env.SMTP_PORT || '587');
+  const isSecure = process.env.SMTP_SECURE === 'true' || port === 465;
 
-  logger.info(`[DIAGNOSTIC] Initializing SMTP: smtp.googlemail.com:587 | User: ${user ? 'SET' : 'MISSING'} | Pass: ${pass ? 'SET' : 'MISSING'}`);
+  logger.info(`[DIAGNOSTIC] Initializing SMTP: smtp.googlemail.com:${port} | Secure: ${isSecure} | User: ${user ? 'SET' : 'MISSING'} | Pass: ${pass ? 'SET' : 'MISSING'}`);
 
   return nodemailer.createTransport({
-    host: 'smtp.googlemail.com', // Using alternate host for better routing
-    port: 587,
-    secure: false, 
+    host: 'smtp.googlemail.com', 
+    port: port,
+    secure: isSecure, 
     auth: { user, pass },
     tls: {
       rejectUnauthorized: false,
