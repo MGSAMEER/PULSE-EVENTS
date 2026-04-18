@@ -15,7 +15,7 @@ const getTransporter = () => {
 
   logger.info(`[DIAGNOSTIC] Initializing SMTP: smtp.googlemail.com:${port} | Secure: ${isSecure} | User: ${user ? 'SET' : 'MISSING'} | Pass: ${pass ? 'SET' : 'MISSING'}`);
 
-  return nodemailer.createTransport({
+  const transportConfig: any = {
     host: 'smtp.googlemail.com', 
     port: port,
     secure: isSecure, 
@@ -31,7 +31,9 @@ const getTransporter = () => {
     connectionTimeout: 20000, 
     greetingTimeout: 20000,   
     socketTimeout: 40000      
-  } as any);
+  };
+
+  return nodemailer.createTransport(transportConfig);
 };
 
 export const sendVerificationEmail = async (email: string, token: string) => {
