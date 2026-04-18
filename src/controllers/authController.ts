@@ -6,7 +6,7 @@ import { generateToken } from '../utils/jwt';
 import { ApiResponseUtil } from '../utils/response';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/emailService';
+import { sendVerificationEmail, sendForgotPasswordEmail } from '../utils/emailService';
 import OrganizerRequest from '../models/OrganizerRequest';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -113,11 +113,9 @@ export const register: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`User registered: ${email} [${user.role}]. Verification token generated.`);
 
-    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
-    
-    // Attempt email delivery gracefully (prevents 500 error if SMTP times out)
+    // Attempt email delivery via Resend
     try {
-      await sendVerificationEmail(normalizedEmail, verificationLink);
+      await sendVerificationEmail(normalizedEmail, verificationToken);
     } catch (mailError) {
       logger.error(`Registration succeeded but verification email failed for ${normalizedEmail}: ${mailError}`);
     }
@@ -245,8 +243,7 @@ export const forgotPassword: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`Password reset requested: ${user.email}`);
 
-    const resetLink = `http://localhost:3000/reset-password/${resetToken}?email=${encodeURIComponent(email)}`;
-    await sendPasswordResetEmail(email, resetLink);
+    await sendForgotPasswordEmail(email, resetToken);
 
     return ApiResponseUtil.success(res, 'If your email is registered, a password reset link has been sent.', {});
   } catch (error) {

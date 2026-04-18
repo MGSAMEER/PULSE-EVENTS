@@ -9,7 +9,8 @@ const FROM_ADDRESS = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 
 export const sendVerificationEmail = async (email: string, token: string) => {
   try {
-    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${token}`;
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const verificationUrl = `${frontendUrl}/verify-email/${token}`;
     
     const { data, error } = await resend.emails.send({
       from: `Pulse Platform <${FROM_ADDRESS}>`,
@@ -85,13 +86,21 @@ export const sendBookingConfirmation = async (
 
 export const sendForgotPasswordEmail = async (email: string, token: string) => {
   try {
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const resetUrl = `${frontendUrl}/reset-password/${token}`;
     
     await resend.emails.send({
       from: `Pulse Security <${FROM_ADDRESS}>`,
       to: [email],
       subject: 'Password Reset Request',
-      html: `<p>Click <a href="${resetUrl}">here</a> to reset your password.</p>`,
+      html: `
+        <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
+          <h1 style="color: #6366f1;">Access Recovery</h1>
+          <p>We received a request to reset your password. Click the button below to proceed.</p>
+          <a href="${resetUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Reset Password</a>
+          <p style="color: #666; font-size: 12px;">This link will expire in 1 hour.</p>
+        </div>
+      `,
     });
     
     return true;
