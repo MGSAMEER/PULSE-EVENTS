@@ -9,18 +9,18 @@ import { ApiResponseUtil } from '../utils/response';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
-if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-  logger.error('CRITICAL: Razorpay API keys are missing in the environment grid.');
-}
+const getRazorpayInstance = () => {
+  const key_id = (process.env.RAZORPAY_KEY_ID || '').trim();
+  const key_secret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+  
+  if (!key_id || !key_secret || key_id === 'RAZORPAY_NOT_SET') {
+    logger.error('CRITICAL: Razorpay credentials missing or invalid in environment!');
+  }
+  
+  return new Razorpay({ key_id, key_secret });
+};
 
-if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-  logger.error('CRITICAL: Razorpay API keys are missing! Using dummy trial keys which will FAIL in production.');
-}
-
-const razorpay = new Razorpay({
-  key_id: (process.env.RAZORPAY_KEY_ID || 'RAZORPAY_NOT_SET').trim(),
-  key_secret: (process.env.RAZORPAY_KEY_SECRET || 'RAZORPAY_NOT_SET').trim(),
-});
+const razorpay = getRazorpayInstance();
 
 // Debug: Verify key prefixes (Safe log)
 const kid = (process.env.RAZORPAY_KEY_ID || '').trim();
@@ -53,7 +53,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // Create Razorpay order
     const options = {
-      amount: booking.totalPrice * 100, // Convert to paise
+      amount: Math.round(booking.totalPrice * 100), // Convert to paise and ensure integer
       currency: 'INR',
       receipt: `receipt_${bookingId}`,
     };
@@ -99,8 +99,9 @@ export const verifyPayment = async (req: Request, res: Response) => {
 
     // 1. SIGNATURE VERIFICATION
     const sign = razorpay_order_id + '|' + razorpay_payment_id;
+    const secret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
     const expectedSign = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
+      .createHmac('sha256', secret)
       .update(sign.toString())
       .digest('hex');
 
