@@ -165,13 +165,15 @@ export const verifyPayment = async (req: Request, res: Response) => {
           const qrBuffer = await QRCode.toBuffer(booking.qrCode, { errorCorrectionLevel: 'H', margin: 1 });
           const pdfBuffer = await generateTicketPDF(booking, booking.eventId, qrBuffer);
 
-          await sendBookingConfirmation(
+          sendBookingConfirmation(
             (booking.userId as any).email,
             (booking.eventId as any).name,
             booking._id.toString(),
             qrBuffer,
             pdfBuffer
-          );
+          ).catch(err => {
+            logger.error(`Background booking email failure for ${booking._id}: ${err.message}`);
+          });
           
           logger.info(`Confirmation email sent for booking ${booking._id}`);
         } catch (err: any) {

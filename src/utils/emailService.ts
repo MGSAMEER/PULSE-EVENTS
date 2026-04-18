@@ -2,67 +2,79 @@ import dns from 'dns';
 import nodemailer from 'nodemailer';
 import logger from './logger';
 
-// Hardened Transporter with IPv4 preference (via global server fix)
-// and strict Port 465 SSL settings for Railway compatibility.
-const getTransporter = () => {
-  // Check for credentials under both common naming patterns
-  const user = (process.env.SMTP_USER || process.env.EMAIL_USER || '').trim();
-  const pass = (process.env.SMTP_PASS || process.env.EMAIL_PASS || '').trim();
-  
-  // Honor Railway variables but fallback to 587 if not specified
-  const port = parseInt(process.env.SMTP_PORT || '587');
-  const isSecure = process.env.SMTP_SECURE === 'true' || port === 465;
+// 🔥 FORCE IPV4 (CRITICAL FIX FOR RAILWAY ENETUNREACH ERROR)
+dns.setDefaultResultOrder('ipv4first');
 
-  logger.info(`[DIAGNOSTIC] Initializing SMTP: smtp.googlemail.com:${port} | Secure: ${isSecure} | User: ${user ? 'SET' : 'MISSING'} | Pass: ${pass ? 'SET' : 'MISSING'}`);
+// ✅ CONFIGURE HARDENED TRANSPORTER
+export const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // STARTTLS
+  auth: {
+    user: (process.env.SMTP_USER || process.env.EMAIL_USER || '').trim(),
+    pass: (process.env.SMTP_PASS || process.env.EMAIL_PASS || '').trim(),
+  },
+  // 🔥 PRODUCTION HARDENING (IMPORTANT FOR RAILWAY NETWORK STACK)
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 5000,    // 5 seconds
+  socketTimeout: 10000,     // 10 seconds
+  tls: {
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
+  }
+} as any);
 
-  const transportConfig: any = {
-    host: 'smtp.googlemail.com', 
-    port: port,
-    secure: isSecure, 
-    auth: { user, pass },
-    // THE NUCLEAR FIX: Force NodeMailer to use the IPv4 address instead of failing on IPv6
-    lookup: (hostname: string, options: any, callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void) => {
-      dns.lookup(hostname, { family: 4 }, callback);
-    },
-    tls: {
-      rejectUnauthorized: false,
-      minVersion: 'TLSv1.2'
-    },
-    connectionTimeout: 20000, 
-    greetingTimeout: 20000,   
-    socketTimeout: 40000      
-  };
-
-  return nodemailer.createTransport(transportConfig);
-};
-
-export const sendVerificationEmail = async (email: string, token: string) => {
+/**
+ * Sends an email with basic retry logic for transient network issues
+ */
+export async function sendWithRetry(mailOptions: any, retries = 2) {
   try {
-    const transporter = getTransporter();
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const verificationUrl = `${frontendUrl}/verify-email/${token}`;
+    return await transporter.sendMail(mailOptions);
+  } catch (err: any) {
+    if (retries > 0) {
+      logger.info(`🔁 Retrying email dispatch... (${retries} attempts left)`);
+      return sendWithRetry(mailOptions, retries - 1);
+    }
+    logger.error(`❌ Final email dispatch failure: ${err.message}`);
+    throw err;
+  }
+}
 
-    const mailOptions = {
-      from: `"PULSE Platform" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Verify your PULSE Account',
-      html: `
-        <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
-          <h1 style="color: #6366f1;">Welcome to PULSE</h1>
-          <p>Click the button below to activate your account and join the mission.</p>
-          <a href="${verificationUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Verify Account</a>
-          <p style="color: #666; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
-        </div>
-      `,
-    };
-
-    const result = await transporter.sendMail(mailOptions);
-    logger.info(`Verification email sent to ${email} [${result.messageId}]`);
+/**
+ * Asynchronous non-blocking wrapper for email dispatch
+ */
+export async function sendEmailSafe(mailOptions: any) {
+  try {
+    const info = await sendWithRetry(mailOptions);
+    logger.info(`📧 Email dispatched successfully: ${info.messageId}`);
     return true;
   } catch (error: any) {
-    logger.error(`SMTP Verification failure for ${email}: ${error.message}`);
+    logger.error(`❌ Non-blocking email failure: ${error.message}`);
     return false;
   }
+}
+
+export const sendVerificationEmail = async (email: string, token: string) => {
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const verificationUrl = `${frontendUrl}/verify-email/${token}`;
+
+  const mailOptions = {
+    from: `"PULSE Platform" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'Verify your PULSE Account',
+    html: `
+      <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
+        <h1 style="color: #6366f1;">Welcome to PULSE</h1>
+        <p>Click the button below to activate your account and join the mission.</p>
+        <a href="${verificationUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Verify Account</a>
+        <p style="color: #666; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
+      </div>
+    `,
+  };
+
+  // We await here because this might be called in a background context or we want to handle the result
+  // But usually, we call this in controllers without blocking the response.
+  return sendEmailSafe(mailOptions);
 };
 
 export const sendBookingConfirmation = async (
@@ -72,98 +84,77 @@ export const sendBookingConfirmation = async (
   qrCodeBuffer: Buffer,
   pdfBuffer: Buffer
 ) => {
-  try {
-    const transporter = getTransporter();
-
-    const mailOptions = {
-      from: `"PULSE Orders" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: `Your Mission Pass: ${eventName}`,
-      html: `
-        <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
-          <h1 style="color: #6366f1;">Mission Confirmed</h1>
-          <p>Your booking for <strong>${eventName}</strong> is secured.</p>
-          <p>Booking ID: <code style="background: #1a1a1a; padding: 4px 8px; border-radius: 4px;">${bookingId}</code></p>
-          <div style="background: #ffffff; padding: 20px; display: inline-block; border-radius: 8px; margin: 20px 0;">
-             <img src="cid:qrcode" alt="QR Code" width="150" height="150" />
-          </div>
-          <p>Find your E-Ticket attached as a PDF to this email.</p>
-          <p style="color: #666; font-size: 12px;">See you at the drop-off point.</p>
+  const mailOptions = {
+    from: `"PULSE Orders" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `Your Mission Pass: ${eventName}`,
+    html: `
+      <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
+        <h1 style="color: #6366f1;">Mission Confirmed</h1>
+        <p>Your booking for <strong>${eventName}</strong> is secured.</p>
+        <p>Booking ID: <code style="background: #1a1a1a; padding: 4px 8px; border-radius: 4px;">${bookingId}</code></p>
+        <div style="background: #ffffff; padding: 20px; display: inline-block; border-radius: 8px; margin: 20px 0;">
+           <img src="cid:qrcode" alt="QR Code" width="150" height="150" />
         </div>
-      `,
-      attachments: [
-        {
-          filename: 'ticket.pdf',
-          content: pdfBuffer,
-        },
-        {
-          filename: 'qrcode.png',
-          content: qrCodeBuffer,
-          cid: 'qrcode'
-        }
-      ],
-    };
+        <p>Find your E-Ticket attached as a PDF to this email.</p>
+        <p style="color: #666; font-size: 12px;">See you at the drop-off point.</p>
+      </div>
+    `,
+    attachments: [
+      {
+        filename: 'ticket.pdf',
+        content: pdfBuffer,
+      },
+      {
+        filename: 'qrcode.png',
+        content: qrCodeBuffer,
+        cid: 'qrcode'
+      }
+    ],
+  };
 
-    const result = await transporter.sendMail(mailOptions);
-    logger.info(`Booking confirmation sent to ${email} [${result.messageId}]`);
-  } catch (error: any) {
-    logger.error(`SMTP Booking failure for ${bookingId}: ${error.message}`);
-    throw error;
-  }
+  return sendEmailSafe(mailOptions);
 };
 
 export const sendEventReminder = async (email: string, eventName: string, eventDate: string) => {
-  try {
-    const transporter = getTransporter();
-    await transporter.sendMail({
-      from: `"PULSE Reminders" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: `Reminder: ${eventName} is coming up!`,
-      html: `<p>Your mission for <strong>${eventName}</strong> starts on ${eventDate}. Check your tickets in the portal.</p>`,
-    });
-  } catch (error: any) {
-    logger.error(`SMTP Reminder failure for ${email}: ${error.message}`);
-  }
+  const mailOptions = {
+    from: `"PULSE Reminders" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `Reminder: ${eventName} is coming up!`,
+    html: `<p>Your mission for <strong>${eventName}</strong> starts on ${eventDate}. Check your tickets in the portal.</p>`,
+  };
+  
+  return sendEmailSafe(mailOptions);
 };
 
 export const sendBulkAnnouncement = async (emails: string[], subject: string, message: string) => {
-  try {
-    const transporter = getTransporter();
-    await transporter.sendMail({
-      from: `"PULSE Broadcast" <${process.env.EMAIL_USER}>`,
-      to: emails.join(','),
-      subject: `[Pulse Announcement] ${subject}`,
-      html: `<div>${message}</div>`,
-    });
-    logger.info(`Bulk announcement dispatched to ${emails.length} nodes`);
-  } catch (error: any) {
-    logger.error(`SMTP Bulk failure: ${error.message}`);
-  }
+  const mailOptions = {
+    from: `"PULSE Broadcast" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
+    to: emails.join(','),
+    subject: `[Pulse Announcement] ${subject}`,
+    html: `<div>${message}</div>`,
+  };
+
+  return sendEmailSafe(mailOptions);
 };
 
 export const sendForgotPasswordEmail = async (email: string, token: string) => {
-  try {
-    const transporter = getTransporter();
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const resetUrl = `${frontendUrl}/reset-password/${token}`;
-    
-    await transporter.sendMail({
-      from: `"PULSE Security" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Password Reset Request',
-      html: `
-        <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
-          <h1 style="color: #6366f1;">Access Recovery</h1>
-          <p>We received a request to reset your password. Click the button below to proceed.</p>
-          <a href="${resetUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Reset Password</a>
-          <p style="color: #666; font-size: 12px;">This link will expire in 1 hour.</p>
-        </div>
-      `,
-    });
-    
-    return true;
-  } catch (error: any) {
-    logger.error(`SMTP Reset failure for ${email}: ${error.message}`);
-    return false;
-  }
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const resetUrl = `${frontendUrl}/reset-password/${token}`;
+  
+  const mailOptions = {
+    from: `"PULSE Security" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'Password Reset Request',
+    html: `
+      <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
+        <h1 style="color: #6366f1;">Access Recovery</h1>
+        <p>We received a request to reset your password. Click the button below to proceed.</p>
+        <a href="${resetUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Reset Password</a>
+        <p style="color: #666; font-size: 12px;">This link will expire in 1 hour.</p>
+      </div>
+    `,
+  };
+  
+  return sendEmailSafe(mailOptions);
 };

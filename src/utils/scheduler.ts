@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import Booking from '../models/Booking';
 import { sendEventReminder } from './emailService';
+import logger from './logger';
 
 // Schedule reminder emails 1 day before event
 export const scheduleReminders = () => {
@@ -23,11 +24,13 @@ export const scheduleReminders = () => {
         const eventDate = new Date((booking.eventId as any).date);
         if (eventDate >= tomorrow && eventDate < dayAfter) {
           // Send reminder email
-          await sendEventReminder(
+          sendEventReminder(
             (booking.userId as any).email,
             (booking.eventId as any).name,
             eventDate.toLocaleDateString()
-          );
+          ).catch(err => {
+            logger.error(`Background reminder failure for ${booking._id}: ${err.message}`);
+          });
         }
       }
     } catch (error) {
