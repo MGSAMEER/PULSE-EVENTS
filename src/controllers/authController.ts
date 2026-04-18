@@ -31,8 +31,9 @@ export const googleLogin: RequestHandler = async (req, res) => {
     }
 
     const { email, name, picture, sub } = payload;
+    const normalizedEmail = email.toLowerCase();
 
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       // Provision fresh identity
@@ -77,8 +78,9 @@ export const googleLogin: RequestHandler = async (req, res) => {
 export const register: RequestHandler = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
+    const normalizedEmail = email.toLowerCase();
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       throw new AppError('Identity conflict: Terminal already registered', 400);
     }
@@ -89,7 +91,7 @@ export const register: RequestHandler = async (req, res) => {
     // Force role to 'user' to prevent unauthorized privilege escalation via req.body
     const user = new User({
       name,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
       role: 'USER', 
       isVerified: false,
@@ -142,8 +144,9 @@ export const verifyEmail: RequestHandler = async (req, res) => {
 export const login: RequestHandler = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = email.toLowerCase();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       logger.warn(`Authentication failed: User ${email} not found from ${req.ip}`);

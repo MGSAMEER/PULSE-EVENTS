@@ -17,6 +17,7 @@ const razorpay = new Razorpay({
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.body;
+    logger.debug(`Payment request initialization for booking: ${bookingId}`);
     const userId = req.user?.id;
 
     if (!userId) {

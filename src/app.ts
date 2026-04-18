@@ -9,6 +9,9 @@ import logger from './utils/logger';
 
 const app = express();
 
+// Enable trust proxy for Railway/Vercel environments (Fixes rate limiting IP detection)
+app.set('trust proxy', 1);
+
 // CORS configuration
 app.use(cors(corsOptions));
 
