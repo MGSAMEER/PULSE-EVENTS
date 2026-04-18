@@ -6,15 +6,17 @@ let transporterInstance: nodemailer.Transporter | null = null;
 const getTransporter = () => {
   if (!transporterInstance) {
     const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
-    const port = parseInt((process.env.SMTP_PORT || '587').trim());
+    const port = parseInt((process.env.SMTP_PORT || '465').trim()); // Default to 465 for better cloud compatibility
     const user = (process.env.EMAIL_USER || '').trim();
     const pass = (process.env.EMAIL_PASS || '').trim();
 
     transporterInstance = nodemailer.createTransport({
       host,
       port,
-      secure: process.env.SMTP_SECURE === 'true' || port === 465, 
+      secure: port === 465 || process.env.SMTP_SECURE === 'true', 
       auth: { user, pass },
+      connectionTimeout: 10000, // 10s connection timeout
+      greetingTimeout: 5000,    // 5s greeting timeout
     });
   }
   return transporterInstance;
