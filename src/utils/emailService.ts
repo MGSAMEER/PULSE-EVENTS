@@ -7,18 +7,20 @@ const getTransporter = () => {
   const user = (process.env.EMAIL_USER || '').trim();
   const pass = (process.env.EMAIL_PASS || '').trim();
 
+  logger.info(`[DIAGNOSTIC] Initializing SMTP: smtp.googlemail.com:587 | User: ${user ? 'SET' : 'MISSING'} | Pass: ${pass ? 'SET' : 'MISSING'}`);
+
   return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
+    host: 'smtp.googlemail.com', // Using alternate host for better routing
     port: 587,
-    secure: false, // Use STARTTLS on port 587
+    secure: false, 
     auth: { user, pass },
     tls: {
-      rejectUnauthorized: false, // Critical for cloud proxy compatibility
+      rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 15000, // 15s
-    greetingTimeout: 15000,   // 15s
-    socketTimeout: 30000      // 30s
+    connectionTimeout: 20000, 
+    greetingTimeout: 20000,   
+    socketTimeout: 40000      
   });
 };
 
