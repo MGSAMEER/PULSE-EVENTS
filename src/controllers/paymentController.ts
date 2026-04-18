@@ -62,9 +62,9 @@ const sendBookingEmailAsync = async (booking: any): Promise<void> => {
     logger.debug(`Generating PDF ticket for booking ${booking._id}...`);
     const pdfBuffer = await generateTicketPDF(booking, booking.eventId, qrBuffer);
 
-    // Send Email with retry
+    // Send Email with retry and check return value
     logger.debug(`Sending email via SMTP for booking ${booking._id}...`);
-    await sendBookingConfirmation(
+    const emailSent = await sendBookingConfirmation(
       userEmail,
       eventName,
       booking._id.toString(),
@@ -72,7 +72,11 @@ const sendBookingEmailAsync = async (booking: any): Promise<void> => {
       pdfBuffer
     );
 
-    logger.info(`✅ Confirmation email successfully sent to ${userEmail} for booking ${booking._id}`);
+    if (emailSent) {
+      logger.info(`✅ Confirmation email successfully sent to ${userEmail} for booking ${booking._id}`);
+    } else {
+      logger.error(`❌ Confirmation email FAILED - Not delivered to ${userEmail} for booking ${booking._id}. Check SMTP configuration.`);
+    }
   } catch (error: any) {
     logger.error(`❌ Email sending failed for booking ${booking._id}: ${error.message}`, {
       errorType: error.name,

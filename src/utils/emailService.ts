@@ -18,6 +18,7 @@ export const transporter = nodemailer.createTransport({
   connectionTimeout: 10000, // 10 seconds
   greetingTimeout: 5000,    // 5 seconds
   socketTimeout: 10000,     // 10 seconds
+  family: 4, // 🔥 FORCE IPv4 (FIX FOR ENETUNREACH IPv6 ERRORS ON RAILWAY)
   tls: {
     rejectUnauthorized: false,
     minVersion: 'TLSv1.2'
@@ -77,10 +78,10 @@ export async function sendWithRetry(mailOptions: any, retries = 2) {
 export async function sendEmailSafe(mailOptions: any): Promise<boolean> {
   try {
     const info = await sendWithRetry(mailOptions);
-    logger.info(`📧 Email dispatch successful: ${info.messageId} to ${mailOptions.to}`);
+    logger.info(`✅ Email dispatch successful: Message ID ${info.messageId} sent to ${mailOptions.to}`);
     return true;
   } catch (error: any) {
-    logger.error(`❌ Non-blocking email dispatch failed for ${mailOptions.to}: ${error.message}`);
+    logger.error(`❌ Email dispatch FAILED for ${mailOptions.to}: ${error.message}`);
     // Return false instead of throwing so caller doesn't crash
     return false;
   }
