@@ -1,3 +1,4 @@
+import dns from 'dns';
 import nodemailer from 'nodemailer';
 import logger from './logger';
 
@@ -19,6 +20,10 @@ const getTransporter = () => {
     port: port,
     secure: isSecure, 
     auth: { user, pass },
+    // THE NUCLEAR FIX: Force NodeMailer to use the IPv4 address instead of failing on IPv6
+    lookup: (hostname, options, callback) => {
+      dns.lookup(hostname, { family: 4 }, callback);
+    },
     tls: {
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2'
