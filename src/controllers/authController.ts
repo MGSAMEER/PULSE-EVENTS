@@ -49,12 +49,24 @@ export const googleLogin: RequestHandler = async (req, res) => {
       logger.info(`New user provisioned via Google: ${email}`);
     } else {
       // Unify accounts if not already linked
+      let modified = false;
       if (!user.googleId) {
         user.googleId = sub;
-        if (picture && !user.avatar) user.avatar = picture;
-        await user.save();
-        logger.info(`Linked existing account to Google: ${email}`);
+        modified = true;
       }
+      if (picture && !user.avatar) {
+        user.avatar = picture;
+        modified = true;
+      }
+      
+      // Auto-fix legacy lowercase roles
+      if (user.role !== user.role.toUpperCase()) {
+        user.role = user.role.toUpperCase() as any;
+        modified = true;
+      }
+
+      if (modified) await user.save();
+      logger.info(`Google synchronization complete for: ${email}`);
     }
 
     const jwtToken = generateToken({ id: user._id });

@@ -30,4 +30,12 @@ const UserSchema: Schema = new Schema({
   timestamps: true,
 });
 
+// Middleware to ensure role is always uppercase before saving
+UserSchema.pre('save', function(next) {
+  if (this.isModified('role')) {
+    this.role = this.role.toUpperCase() as any;
+  }
+  next();
+});
+
 export default mongoose.model<IUser>('User', UserSchema);
