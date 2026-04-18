@@ -22,6 +22,11 @@ const razorpay = new Razorpay({
   key_secret: (process.env.RAZORPAY_KEY_SECRET || 'RAZORPAY_NOT_SET').trim(),
 });
 
+// Debug: Verify key prefixes (Safe log)
+const kid = (process.env.RAZORPAY_KEY_ID || '').trim();
+const ksec = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+logger.info(`Razorpay Engine Initialized | Key ID Prefix: ${kid.slice(0, 8)}... | Secret Prefix: ${ksec.slice(0, 4)}...`);
+
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.body;
