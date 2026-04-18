@@ -21,7 +21,7 @@ const getTransporter = () => {
     secure: isSecure, 
     auth: { user, pass },
     // THE NUCLEAR FIX: Force NodeMailer to use the IPv4 address instead of failing on IPv6
-    lookup: (hostname, options, callback) => {
+    lookup: (hostname: string, options: any, callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void) => {
       dns.lookup(hostname, { family: 4 }, callback);
     },
     tls: {
@@ -31,7 +31,7 @@ const getTransporter = () => {
     connectionTimeout: 20000, 
     greetingTimeout: 20000,   
     socketTimeout: 40000      
-  });
+  } as any);
 };
 
 export const sendVerificationEmail = async (email: string, token: string) => {
