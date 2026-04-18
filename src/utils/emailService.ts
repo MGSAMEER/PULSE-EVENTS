@@ -5,14 +5,16 @@ let transporterInstance: nodemailer.Transporter | null = null;
 
 const getTransporter = () => {
   if (!transporterInstance) {
+    const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+    const port = parseInt((process.env.SMTP_PORT || '587').trim());
+    const user = (process.env.EMAIL_USER || '').trim();
+    const pass = (process.env.EMAIL_PASS || '').trim();
+
     transporterInstance = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true', 
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
+      host,
+      port,
+      secure: process.env.SMTP_SECURE === 'true' || port === 465, 
+      auth: { user, pass },
     });
   }
   return transporterInstance;

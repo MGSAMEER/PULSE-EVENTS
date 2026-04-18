@@ -18,8 +18,8 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
 }
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'RAZORPAY_NOT_SET',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'RAZORPAY_NOT_SET',
+  key_id: (process.env.RAZORPAY_KEY_ID || 'RAZORPAY_NOT_SET').trim(),
+  key_secret: (process.env.RAZORPAY_KEY_SECRET || 'RAZORPAY_NOT_SET').trim(),
 });
 
 export const createOrder = async (req: Request, res: Response) => {
