@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import QRCode from 'qrcode';
 import Booking from '../models/Booking';
 import Payment from '../models/Payment';
 import { generateQRData } from '../utils/qrGenerator';
 import { sendBookingConfirmation } from '../utils/emailService';
+import { generateTicketPDF } from '../utils/pdfGenerator';
 import { ApiResponseUtil } from '../utils/response';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
@@ -26,6 +28,59 @@ const razorpay = getRazorpayInstance();
 const kid = (process.env.RAZORPAY_KEY_ID || '').trim();
 const ksec = (process.env.RAZORPAY_KEY_SECRET || '').trim();
 logger.info(`Razorpay Engine Initialized | Key ID Prefix: ${kid.slice(0, 8)}... | Secret Prefix: ${ksec.slice(0, 4)}...`);
+
+/**
+ * 🔧 Helper function to send booking confirmation email
+ * Properly handles async operations with retry logic for SMTP issues
+ */
+const sendBookingEmailAsync = async (booking: any): Promise<void> => {
+  try {
+    if (!booking.eventId || !booking.userId) {
+      logger.warn(`⚠️ Email not sent for booking ${booking._id}: Missing event or user data`);
+      return;
+    }
+
+    const userEmail = (booking.userId as any).email;
+    const eventName = (booking.eventId as any).name;
+
+    if (!userEmail) {
+      logger.error(`❌ Cannot send email - user email missing for booking ${booking._id}`);
+      return;
+    }
+
+    logger.info(`📧 Starting email generation for booking ${booking._id} to ${userEmail}`);
+
+    // Generate QR Code Buffer
+    logger.debug(`Generating QR code for booking ${booking._id}...`);
+    const qrBuffer = await QRCode.toBuffer(booking.qrCode, {
+      errorCorrectionLevel: 'H',
+      margin: 1,
+      width: 150
+    });
+    
+    // Generate PDF Ticket
+    logger.debug(`Generating PDF ticket for booking ${booking._id}...`);
+    const pdfBuffer = await generateTicketPDF(booking, booking.eventId, qrBuffer);
+
+    // Send Email with retry
+    logger.debug(`Sending email via SMTP for booking ${booking._id}...`);
+    await sendBookingConfirmation(
+      userEmail,
+      eventName,
+      booking._id.toString(),
+      qrBuffer,
+      pdfBuffer
+    );
+
+    logger.info(`✅ Confirmation email successfully sent to ${userEmail} for booking ${booking._id}`);
+  } catch (error: any) {
+    logger.error(`❌ Email sending failed for booking ${booking._id}: ${error.message}`, {
+      errorType: error.name,
+      stack: error.stack
+    });
+    // Don't rethrow - email failure shouldn't affect payment confirmation
+  }
+};
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
@@ -155,32 +210,13 @@ export const verifyPayment = async (req: Request, res: Response) => {
 
     logger.info(`Booking ${booking._id} confirmed via payment ${razorpay_payment_id}`);
 
-    // 6. SEND EMAIL NOTIFICATION WITH PDF TICKET
-    if (booking.eventId && booking.userId) {
-      import('qrcode').then(async (QRCode: any) => {
-        try {
-          const { generateTicketPDF } = await import('../utils/pdfGenerator');
-          
-          // Generate actual PNG Buffer for the QR Code (Better for PDFKit and Email CID)
-          const qrBuffer = await QRCode.toBuffer(booking.qrCode, { errorCorrectionLevel: 'H', margin: 1 });
-          const pdfBuffer = await generateTicketPDF(booking, booking.eventId, qrBuffer);
-
-          sendBookingConfirmation(
-            (booking.userId as any).email,
-            (booking.eventId as any).name,
-            booking._id.toString(),
-            qrBuffer,
-            pdfBuffer
-          ).catch(err => {
-            logger.error(`Background booking email failure for ${booking._id}: ${err.message}`);
-          });
-          
-          logger.info(`Confirmation email sent for booking ${booking._id}`);
-        } catch (err: any) {
-          logger.error(`Email/PDF failure for ${booking._id}: ${err.message}`);
-        }
+    // 6. 📧 SEND EMAIL NOTIFICATION IN BACKGROUND (Non-blocking)
+    // Use setImmediate to queue email sending after response is sent
+    setImmediate(() => {
+      sendBookingEmailAsync(booking).catch(err => {
+        logger.error(`Uncaught error in background email task: ${err.message}`);
       });
-    }
+    });
 
     return ApiResponseUtil.success(res, 'Payment verified and booking confirmed successfully', {
       bookingId: booking._id,

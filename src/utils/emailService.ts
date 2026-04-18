@@ -25,31 +25,63 @@ export const transporter = nodemailer.createTransport({
 } as any);
 
 /**
+ * 🔍 Verify SMTP transporter is properly configured and connected
+ */
+export async function verifyTransporter(): Promise<boolean> {
+  try {
+    const emailUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+    const emailPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+
+    if (!emailUser || !emailPass) {
+      logger.error('❌ SMTP credentials missing! Check EMAIL_USER/EMAIL_PASS environment variables.');
+      return false;
+    }
+
+    logger.info('🔍 Verifying SMTP transporter connection...');
+    await transporter.verify();
+    logger.info('✅ SMTP Transporter verified successfully');
+    return true;
+  } catch (error: any) {
+    logger.error(`❌ SMTP Transporter verification failed: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Sends an email with basic retry logic for transient network issues
  */
 export async function sendWithRetry(mailOptions: any, retries = 2) {
   try {
-    return await transporter.sendMail(mailOptions);
+    logger.debug(`📨 Attempting to send email to ${mailOptions.to} (Retry attempt: ${3 - retries}/3)`);
+    const result = await transporter.sendMail(mailOptions);
+    logger.info(`✅ Email sent successfully. Message ID: ${result.messageId}`);
+    return result;
   } catch (err: any) {
     if (retries > 0) {
-      logger.info(`🔁 Retrying email dispatch... (${retries} attempts left)`);
+      logger.warn(`⚠️ Email send failed, retrying... (${retries} attempts left). Error: ${err.message}`);
+      // Wait 2 seconds before retry
+      await new Promise(resolve => setTimeout(resolve, 2000));
       return sendWithRetry(mailOptions, retries - 1);
     }
-    logger.error(`❌ Final email dispatch failure: ${err.message}`);
+    logger.error(`❌ Final email send failure after all retries: ${err.message}`, {
+      errorCode: err.code,
+      command: err.command
+    });
     throw err;
   }
 }
 
 /**
- * Asynchronous non-blocking wrapper for email dispatch
+ * Asynchronous non-blocking wrapper for email dispatch with better error handling
  */
-export async function sendEmailSafe(mailOptions: any) {
+export async function sendEmailSafe(mailOptions: any): Promise<boolean> {
   try {
     const info = await sendWithRetry(mailOptions);
-    logger.info(`📧 Email dispatched successfully: ${info.messageId}`);
+    logger.info(`📧 Email dispatch successful: ${info.messageId} to ${mailOptions.to}`);
     return true;
   } catch (error: any) {
-    logger.error(`❌ Non-blocking email failure: ${error.message}`);
+    logger.error(`❌ Non-blocking email dispatch failed for ${mailOptions.to}: ${error.message}`);
+    // Return false instead of throwing so caller doesn't crash
     return false;
   }
 }
@@ -72,8 +104,7 @@ export const sendVerificationEmail = async (email: string, token: string) => {
     `,
   };
 
-  // We await here because this might be called in a background context or we want to handle the result
-  // But usually, we call this in controllers without blocking the response.
+  logger.info(`📧 Sending verification email to ${email}`);
   return sendEmailSafe(mailOptions);
 };
 
@@ -113,6 +144,7 @@ export const sendBookingConfirmation = async (
     ],
   };
 
+  logger.info(`📧 Sending booking confirmation to ${email} for event: ${eventName} (Booking ID: ${bookingId})`);
   return sendEmailSafe(mailOptions);
 };
 
@@ -124,6 +156,7 @@ export const sendEventReminder = async (email: string, eventName: string, eventD
     html: `<p>Your mission for <strong>${eventName}</strong> starts on ${eventDate}. Check your tickets in the portal.</p>`,
   };
   
+  logger.info(`📧 Sending event reminder to ${email} for event: ${eventName}`);
   return sendEmailSafe(mailOptions);
 };
 
@@ -135,6 +168,7 @@ export const sendBulkAnnouncement = async (emails: string[], subject: string, me
     html: `<div>${message}</div>`,
   };
 
+  logger.info(`📧 Sending bulk announcement to ${emails.length} recipients with subject: ${subject}`);
   return sendEmailSafe(mailOptions);
 };
 
@@ -156,5 +190,6 @@ export const sendForgotPasswordEmail = async (email: string, token: string) => {
     `,
   };
   
+  logger.info(`📧 Sending password reset email to ${email}`);
   return sendEmailSafe(mailOptions);
 };
