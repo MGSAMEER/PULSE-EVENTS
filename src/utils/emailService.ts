@@ -84,7 +84,36 @@ export const sendBookingConfirmation = async (
   }
 };
 
+export const sendEventReminder = async (email: string, eventName: string, eventDate: string) => {
+  try {
+    await resend.emails.send({
+      from: `Pulse Reminders <${FROM_ADDRESS}>`,
+      to: [email],
+      subject: `Reminder: ${eventName} is coming up!`,
+      html: `<p>Your mission for <strong>${eventName}</strong> starts on ${eventDate}. Check your tickets in the portal.</p>`,
+    });
+  } catch (error: any) {
+    logger.error(`Reminder failure for ${email}: ${error.message}`);
+  }
+};
+
+export const sendBulkAnnouncement = async (emails: string[], subject: string, message: string) => {
+  try {
+    // Resend allows batching or sending to multiple recipients in the 'to' array (limitations apply)
+    await resend.emails.send({
+      from: `Pulse Broadcast <${FROM_ADDRESS}>`,
+      to: emails,
+      subject: `[Pulse Announcement] ${subject}`,
+      html: `<div>${message}</div>`,
+    });
+    logger.info(`Bulk announcement dispatched to ${emails.length} nodes`);
+  } catch (error: any) {
+    logger.error(`Bulk failure: ${error.message}`);
+  }
+};
+
 export const sendForgotPasswordEmail = async (email: string, token: string) => {
+
   try {
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
     const resetUrl = `${frontendUrl}/reset-password/${token}`;
