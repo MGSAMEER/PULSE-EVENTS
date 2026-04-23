@@ -3,37 +3,37 @@ import { promisify } from 'util';
 import nodemailer from 'nodemailer';
 import logger from './logger';
 
-// 🔥 FORCE IPV4 (CRITICAL FIX FOR RAILWAY ENETUNREACH ERROR)
+const lookup = promisify(dns.lookup);
+
+// 🔥 FORCE IPV4 GLOBALLY (CRITICAL FIX FOR RAILWAY ENETUNREACH ERROR)
 dns.setDefaultResultOrder('ipv4first');
 
-// 🔥 CUSTOM DNS LOOKUP - FORCE IPv4 ONLY (CRITICAL FIX FOR RAILWAY)
-const dnsLookup = (hostname: string, options: any, callback: any) => {
-  dns.lookup(hostname, { family: 4 }, callback);
-};
-
-// ✅ CONFIGURE HARDENED TRANSPORTER WITH IPv4-ONLY DNS
+// ✅ CONFIGURE SIMPLIFIED TRANSPORTER
 export const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false, // STARTTLS
   auth: {
-    user: (process.env.SMTP_USER || process.env.EMAIL_USER || '').trim(),
-    pass: (process.env.SMTP_PASS || process.env.EMAIL_PASS || '').trim(),
+    user: process.env.SMTP_USER || process.env.EMAIL_USER,
+    pass: process.env.SMTP_PASS || process.env.EMAIL_PASS,
   },
-  // 🔥 PRODUCTION HARDENING (IMPORTANT FOR RAILWAY NETWORK STACK)
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 5000,    // 5 seconds
-  socketTimeout: 10000,     // 10 seconds
-  family: 4,                // Force IPv4 at transport level
-  lookup: dnsLookup,        // 🔥 Custom DNS lookup that returns only IPv4
+  // 🔥 CRITICAL: Force IPv4
+  family: 4,
+  // 🔥 Stability configs
+  connectionTimeout: 10000,
+  socketTimeout: 10000,
+  greetingTimeout: 5000,
+  // TLS
+  requireTLS: true,
   tls: {
     rejectUnauthorized: false,
-    minVersion: 'TLSv1.2'
-  }
+  },
+  logger: true,
+  debug: true,
 } as any);
 
 /**
- * 🔍 Verify SMTP transporter is properly configured and connected
+ * 🔍 Verify SMTP transporter is properly configured
  */
 export async function verifyTransporter(): Promise<boolean> {
   try {
@@ -41,11 +41,14 @@ export async function verifyTransporter(): Promise<boolean> {
     const emailPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
 
     if (!emailUser || !emailPass) {
-      logger.error('❌ SMTP credentials missing! Check EMAIL_USER/EMAIL_PASS environment variables.');
+      logger.error('❌ SMTP credentials missing!');
       return false;
     }
 
-    logger.info('🔍 Verifying SMTP transporter connection...');
+    // Task 4: Debug Validation
+    const result = await lookup('smtp.gmail.com', { family: 4 });
+    logger.info(`📡 Resolved SMTP IPv4: ${result.address}`);
+
     await transporter.verify();
     logger.info('✅ SMTP Transporter verified successfully');
     return true;
@@ -56,40 +59,37 @@ export async function verifyTransporter(): Promise<boolean> {
 }
 
 /**
- * Sends an email with basic retry logic for transient network issues
+ * Sends an email with basic retry logic
  */
 export async function sendWithRetry(mailOptions: any, retries = 2) {
   try {
-    logger.debug(`📨 Attempting to send email to ${mailOptions.to} (Retry attempt: ${3 - retries}/3)`);
-    const result = await transporter.sendMail(mailOptions);
-    logger.info(`✅ Email sent successfully. Message ID: ${result.messageId}`);
-    return result;
+    // Task 4: Debug Validation before every send
+    const result = await lookup('smtp.gmail.com', { family: 4 });
+    logger.debug(`📡 Pre-send DNS Check: smtp.gmail.com -> ${result.address}`);
+
+    const info = await transporter.sendMail(mailOptions);
+    logger.info(`✅ Email sent successfully. Message ID: ${info.messageId}`);
+    return info;
   } catch (err: any) {
     if (retries > 0) {
       logger.warn(`⚠️ Email send failed, retrying... (${retries} attempts left). Error: ${err.message}`);
-      // Wait 2 seconds before retry
       await new Promise(resolve => setTimeout(resolve, 2000));
       return sendWithRetry(mailOptions, retries - 1);
     }
-    logger.error(`❌ Final email send failure after all retries: ${err.message}`, {
-      errorCode: err.code,
-      command: err.command
-    });
+    logger.error(`❌ Final email send failure: ${err.message}`);
     throw err;
   }
 }
 
 /**
- * Asynchronous non-blocking wrapper for email dispatch with better error handling
+ * Asynchronous non-blocking wrapper for email dispatch
  */
 export async function sendEmailSafe(mailOptions: any): Promise<boolean> {
   try {
-    const info = await sendWithRetry(mailOptions);
-    logger.info(`✅ Email dispatch successful: Message ID ${info.messageId} sent to ${mailOptions.to}`);
+    await sendWithRetry(mailOptions);
     return true;
   } catch (error: any) {
     logger.error(`❌ Email dispatch FAILED for ${mailOptions.to}: ${error.message}`);
-    // Return false instead of throwing so caller doesn't crash
     return false;
   }
 }
