@@ -12,6 +12,7 @@ export interface IBooking extends Document {
     scannedBy: mongoose.Types.ObjectId;
     scannedAt: Date;
   }>;
+  emailStatus: 'PENDING' | 'SENT' | 'FAILED';
 }
 
 const BookingSchema: Schema = new Schema({
@@ -26,6 +27,12 @@ const BookingSchema: Schema = new Schema({
     scannedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     scannedAt: { type: Date, default: Date.now },
   }],
+  emailStatus: { 
+    type: String, 
+    enum: ['PENDING', 'SENT', 'FAILED'], 
+    default: 'PENDING', 
+    index: true 
+  },
 }, {
   timestamps: true,
 });

@@ -1,11 +1,17 @@
 import dns from 'dns';
+import { promisify } from 'util';
 import nodemailer from 'nodemailer';
 import logger from './logger';
 
 // 🔥 FORCE IPV4 (CRITICAL FIX FOR RAILWAY ENETUNREACH ERROR)
 dns.setDefaultResultOrder('ipv4first');
 
-// ✅ CONFIGURE HARDENED TRANSPORTER
+// 🔥 CUSTOM DNS LOOKUP - FORCE IPv4 ONLY (CRITICAL FIX FOR RAILWAY)
+const dnsLookup = (hostname: string, options: any, callback: any) => {
+  dns.lookup(hostname, { family: 4 }, callback);
+};
+
+// ✅ CONFIGURE HARDENED TRANSPORTER WITH IPv4-ONLY DNS
 export const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
@@ -18,7 +24,8 @@ export const transporter = nodemailer.createTransport({
   connectionTimeout: 10000, // 10 seconds
   greetingTimeout: 5000,    // 5 seconds
   socketTimeout: 10000,     // 10 seconds
-  family: 4, // 🔥 FORCE IPv4 (FIX FOR ENETUNREACH IPv6 ERRORS ON RAILWAY)
+  family: 4,                // Force IPv4 at transport level
+  lookup: dnsLookup,        // 🔥 Custom DNS lookup that returns only IPv4
   tls: {
     rejectUnauthorized: false,
     minVersion: 'TLSv1.2'

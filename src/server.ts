@@ -9,6 +9,7 @@ import connectDB from './config/database';
 import { scheduleReminders } from './utils/scheduler';
 import logger from './utils/logger';
 import { transporter } from './utils/emailService';
+import './workers/emailWorker';
 
 // Verify SMTP connection on startup
 transporter.verify()
