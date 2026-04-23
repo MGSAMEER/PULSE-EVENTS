@@ -11,23 +11,28 @@ dns.setDefaultResultOrder('ipv4first');
 // ✅ CONFIGURE SIMPLIFIED TRANSPORTER
 export const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // STARTTLS
+
+  // 🔥 FIX: Use SSL instead of STARTTLS (Port 465 is more stable on Railway)
+  port: 465,
+  secure: true,
+
   auth: {
     user: process.env.SMTP_USER || process.env.EMAIL_USER,
     pass: process.env.SMTP_PASS || process.env.EMAIL_PASS,
   },
+
   // 🔥 CRITICAL: Force IPv4
   family: 4,
-  // 🔥 Stability configs
-  connectionTimeout: 10000,
-  socketTimeout: 10000,
+
+  // Stability configs
+  connectionTimeout: 15000,
+  socketTimeout: 15000,
   greetingTimeout: 5000,
-  // TLS
-  requireTLS: true,
+
   tls: {
     rejectUnauthorized: false,
   },
+
   logger: true,
   debug: true,
 } as any);
