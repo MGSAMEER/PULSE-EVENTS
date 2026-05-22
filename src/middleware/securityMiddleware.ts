@@ -81,8 +81,9 @@ export const readLimiter = createRateLimit(
 // CORS configuration
 export const corsOptions = {
   origin: (origin: any, callback: any) => {
-    // Development mode: allow all origins
-    if (process.env.NODE_ENV === 'development') {
+    // For testing: allow all origins (development/testing mode)
+    const allowAll = process.env.CORS_ALLOW_ALL === 'true' || process.env.NODE_ENV === 'development';
+    if (allowAll) {
       callback(null, true);
       return;
     }
@@ -90,9 +91,18 @@ export const corsOptions = {
     // Production mode: check whitelist
     const whitelist = process.env.ALLOWED_ORIGINS 
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-      : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://127.0.0.1:5173', 'https://pulse-events.onrender.com']; 
+      : [
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+          'http://localhost:5173',
+          'http://127.0.0.1:5173',
+          'https://pulse-events.onrender.com',
+        ];
     
-    if (!origin || whitelist.includes(origin) || /\.vercel\.app$/.test(origin) || process.env.NODE_ENV !== 'production') {
+    // Allow Vercel preview and production domains
+    const isVercelDomain = origin && /\.vercel\.app$/.test(origin);
+    
+    if (!origin || whitelist.includes(origin) || isVercelDomain) {
       callback(null, true);
     } else {
       logger.error(`CORS Blocked: Origin ${origin} is not in whitelist`);
