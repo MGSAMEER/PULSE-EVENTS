@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "main": "dist/server.js",
   "engines": {
-    "node": ">=18.0.0"
+    "node": "18.x"
   },
   "scripts": {
+    "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node-dev src/server.ts",
-    "build": "npx tsc",
     "test": "jest"
   },
   "dependencies": {
