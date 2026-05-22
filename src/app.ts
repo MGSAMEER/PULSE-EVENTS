@@ -21,6 +21,9 @@ app.use((req, res, next) => {
 // CORS configuration
 app.use(cors(corsOptions));
 
+// Handle preflight requests for all routes
+app.options('*', cors(corsOptions));
+
 // Body parsing (Reduced limits for security)
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
