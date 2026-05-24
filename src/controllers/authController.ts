@@ -118,6 +118,10 @@ export const register: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`User registered: ${email} [${user.role}]. Verification token generated.`);
 
+    // ✅ DEBUG: Trigger email send
+    console.log('📧 Triggering verification email for:', user.email);
+    console.log('📧 Token:', verificationToken.substring(0, 8) + '...');
+
     // Dispatch verification email and ensure we get diagnostic logs.
     console.log('📧 Sending verification email...');
     try {
@@ -138,6 +142,8 @@ export const register: RequestHandler = async (req, res) => {
       console.error('❌ Email failed:', err?.message || err);
       logger.error(`Verification email exception for ${normalizedEmail}: ${err?.message || err}`);
     }
+
+    console.log('✅ Verification flow completed');
 
     return ApiResponseUtil.success(res, 'Registration successful. Please verify your email to continue.', { 
       user: { 

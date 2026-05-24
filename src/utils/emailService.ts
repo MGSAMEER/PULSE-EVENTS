@@ -12,41 +12,87 @@ const SENDER_EMAIL = process.env.SENDER_EMAIL || 'noreply@pulse-events.com';
 const SENDER_NAME  = 'PULSE Events';
 
 /**
- * Low-level Brevo HTTP sender.
+ * Low-level Brevo HTTP sender with COMPREHENSIVE DEBUGGING.
  * Returns `true` on 2xx, `false` otherwise.
  */
 async function sendViaBrevo(payload: Record<string, any>): Promise<boolean> {
+  // ✅ DEBUG START
+  console.log('🚀 [sendViaBrevo] FUNCTION STARTED');
+
+  // ✅ DEBUG: Check API key existence
   const apiKey = (process.env.BREVO_API_KEY || '').trim();
+  console.log('🔑 [sendViaBrevo] API KEY EXISTS:', !!apiKey, `(length: ${apiKey.length})`);
 
   if (!apiKey) {
-    logger.error('❌ [brevo] BREVO_API_KEY is not set in environment variables');
-    console.error('❌ [brevo] BREVO_API_KEY is not set in environment variables');
+    const errMsg = '❌ [brevo] BREVO_API_KEY is not set in environment variables';
+    console.error(errMsg);
+    logger.error(errMsg);
     return false;
   }
 
   try {
+    // ✅ DEBUG: Log request details
+    console.log('📡 [sendViaBrevo] Sending POST request to:', BREVO_API_URL);
+    console.log('📡 [sendViaBrevo] Request headers:', {
+      'Content-Type': 'application/json',
+      'api-key': `***${apiKey.slice(-4)}`, // Show last 4 chars only
+      'Accept': 'application/json',
+    });
+    console.log('📡 [sendViaBrevo] Payload keys:', Object.keys(payload));
+
+    // ✅ DEBUG: Execute fetch
+    console.log('📡 [sendViaBrevo] Initiating fetch...');
     const res = await fetch(BREVO_API_URL, {
-      method:  'POST',
+      method: 'POST',
       headers: {
-        'Content-Type':  'application/json',
-        'api-key':       apiKey,
-        'Accept':        'application/json',
+        'Content-Type': 'application/json',
+        'api-key': apiKey,
+        'Accept': 'application/json',
       },
       body: JSON.stringify(payload),
     });
 
+    // ✅ DEBUG: Log response status
+    console.log('📬 [sendViaBrevo] Response status:', res.status, res.statusText);
+    console.log('📬 [sendViaBrevo] Response headers:', {
+      'content-type': res.headers.get('content-type'),
+      'content-length': res.headers.get('content-length'),
+    });
+
+    // ✅ DEBUG: Capture response body as text first
+    const responseText = await res.text();
+    console.log('📬 [sendViaBrevo] Response body (raw):', responseText);
+
+    // ✅ DEBUG: Try to parse JSON for additional details
+    let jsonBody: Record<string, any> = {};
+    try {
+      jsonBody = JSON.parse(responseText);
+      console.log('📬 [sendViaBrevo] Response body (parsed):', JSON.stringify(jsonBody, null, 2));
+    } catch (parseErr) {
+      console.log('📬 [sendViaBrevo] Response body is not JSON');
+    }
+
+    // ✅ DEBUG: Check HTTP status
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      const msg = `❌ [brevo] API responded ${res.status} ${res.statusText} | ${JSON.stringify(body)}`;
-      logger.error(msg);
-      console.error(msg);
+      const errMsg = `❌ [brevo] API responded ${res.status} ${res.statusText} | ${responseText}`;
+      console.error(errMsg);
+      logger.error(errMsg);
+      if (jsonBody.message) {
+        console.error('❌ [brevo] Brevo error message:', jsonBody.message);
+      }
+      if (jsonBody.code) {
+        console.error('❌ [brevo] Brevo error code:', jsonBody.code);
+      }
       return false;
     }
 
+    // ✅ DEBUG: Success
+    console.log('✅ [sendViaBrevo] Request succeeded (2xx status)');
     return true;
   } catch (err: any) {
-    logger.error(`❌ [brevo] HTTP error: ${err.message}`);
-    console.error('❌ [brevo] HTTP error:', err?.message || err);
+    console.error('❌ [sendViaBrevo] FETCH ERROR:', err?.message || err);
+    console.error('❌ [sendViaBrevo] Error stack:', err?.stack || 'No stack');
+    logger.error(`❌ [brevo] HTTP error: ${err?.message || err}`);
     return false;
   }
 }
@@ -164,10 +210,17 @@ export async function sendVerificationEmail({
   userName,
   token,
 }: VerificationEmailParams): Promise<boolean> {
+  // ✅ DEBUG: Log function entry
+  console.log('📧 [sendVerificationEmail] TRIGGERED for email:', email);
+  console.log('📧 [sendVerificationEmail] userName:', userName);
+  console.log('📧 [sendVerificationEmail] token exists:', !!token, `(length: ${token?.length})`);
+
   const frontendUrl =
     (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
   const verifyUrl = `${frontendUrl}/verify-email/${token}`;
 
+  console.log('📧 [sendVerificationEmail] Frontend URL:', frontendUrl);
+  console.log('📧 [sendVerificationEmail] Verify URL:', verifyUrl);
   console.log('📧 Brevo email function called: sendVerificationEmail');
   logger.info(`📧 [brevo] Sending verification email → ${email}`);
 
@@ -191,12 +244,17 @@ export async function sendVerificationEmail({
       </div>`,
   };
 
+  console.log('📧 [sendVerificationEmail] Payload constructed, sender email:', SENDER_EMAIL);
+  console.log('📧 [sendVerificationEmail] Calling sendViaBrevo()...');
+
   const ok = await sendViaBrevo(payload);
 
   if (ok) {
+    console.log('✅ [sendVerificationEmail] SUCCESS - Brevo accepted the email');
     logger.info(`✅ [brevo] Verification email sent → ${email}`);
     console.log('✅ Email sent');
   } else {
+    console.error('❌ [sendVerificationEmail] FAILED - Brevo returned false');
     logger.error(`❌ [brevo] Verification email FAILED → ${email}`);
     console.error('❌ Email failed: verification email');
   }
