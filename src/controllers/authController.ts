@@ -113,8 +113,12 @@ export const register: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`User registered: ${email} [${user.role}]. Verification token generated.`);
 
-    // Dispatch verification email in background (Non-blocking)
-    sendVerificationEmail(normalizedEmail, verificationToken).catch(err => {
+    // Dispatch verification email in background (non-blocking)
+    sendVerificationEmail({
+      email:    normalizedEmail,
+      userName: user.name,
+      token:    verificationToken,
+    }).catch(err => {
       logger.error(`Background verification email failure for ${normalizedEmail}: ${err.message}`);
     });
 
@@ -241,9 +245,13 @@ export const forgotPassword: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`Password reset requested: ${user.email}`);
 
-    // Dispatch reset email in background (Non-blocking)
-    sendForgotPasswordEmail(email, resetToken).catch(err => {
-      logger.error(`Background password reset email failure for ${email}: ${err.message}`);
+    // Dispatch reset email in background (non-blocking)
+    sendForgotPasswordEmail({
+      email:    user.email,
+      userName: user.name,
+      token:    resetToken,
+    }).catch(err => {
+      logger.error(`Background password reset email failure for ${user.email}: ${err.message}`);
     });
 
     return ApiResponseUtil.success(res, 'If your email is registered, a password reset link has been sent.', {});

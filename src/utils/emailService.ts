@@ -1,208 +1,289 @@
-import dns from 'dns';
-import { promisify } from 'util';
-import nodemailer from 'nodemailer';
 import logger from './logger';
 
-const lookup = promisify(dns.lookup);
+// --------------------------------------------------------------------------
+// Brevo (Sendinblue) REST API
+// No SMTP transport — everything goes through the JSON-over-HTTPS API.
+// https://developers.brevo.com/reference/sendtransacionalemail
+// --------------------------------------------------------------------------
 
-// 🔥 FORCE IPV4 GLOBALLY (CRITICAL FIX FOR RAILWAY ENETUNREACH ERROR)
-dns.setDefaultResultOrder('ipv4first');
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
-// ✅ CONFIGURE SIMPLIFIED TRANSPORTER
-export const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-
-  // 🔥 FIX: Use SSL instead of STARTTLS (Port 465 is more stable on Railway)
-  port: 465,
-  secure: true,
-
-  auth: {
-    user: process.env.SMTP_USER || process.env.EMAIL_USER,
-    pass: process.env.SMTP_PASS || process.env.EMAIL_PASS,
-  },
-
-  // 🔥 CRITICAL: Force IPv4
-  family: 4,
-
-  // Stability configs
-  connectionTimeout: 15000,
-  socketTimeout: 15000,
-  greetingTimeout: 5000,
-
-  tls: {
-    rejectUnauthorized: false,
-  },
-
-  logger: true,
-  debug: true,
-} as any);
+const SENDER_EMAIL = process.env.SENDER_EMAIL || 'noreply@pulse-events.com';
+const SENDER_NAME  = 'PULSE Events';
 
 /**
- * 🔍 Verify SMTP transporter is properly configured
+ * Low-level Brevo HTTP sender.
+ * Returns `true` on 2xx, `false` otherwise.
  */
-export async function verifyTransporter(): Promise<boolean> {
-  try {
-    const emailUser = process.env.SMTP_USER || process.env.EMAIL_USER;
-    const emailPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+async function sendViaBrevo(payload: Record<string, any>): Promise<boolean> {
+  const apiKey = (process.env.BREVO_API_KEY || '').trim();
 
-    if (!emailUser || !emailPass) {
-      logger.error('❌ SMTP credentials missing!');
+  if (!apiKey) {
+    logger.error('❌ [brevo] BREVO_API_KEY is not set in environment variables');
+    return false;
+  }
+
+  try {
+    const res = await fetch(BREVO_API_URL, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'api-key':       apiKey,
+        'Accept':        'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      logger.error(
+        `❌ [brevo] API responded ${res.status} ${res.statusText}` +
+        ` | ${JSON.stringify(body)}`,
+      );
       return false;
     }
 
-    // Task 4: Debug Validation
-    const result = await lookup('smtp.gmail.com', { family: 4 });
-    logger.info(`📡 Resolved SMTP IPv4: ${result.address}`);
-
-    await transporter.verify();
-    logger.info('✅ SMTP Transporter verified successfully');
     return true;
-  } catch (error: any) {
-    logger.error(`❌ SMTP Transporter verification failed: ${error.message}`);
-    return false;
-  }
-}
-
-/**
- * Sends an email with basic retry logic
- */
-export async function sendWithRetry(mailOptions: any, retries = 2) {
-  try {
-    // Task 4: Debug Validation before every send
-    const result = await lookup('smtp.gmail.com', { family: 4 });
-    logger.debug(`📡 Pre-send DNS Check: smtp.gmail.com -> ${result.address}`);
-
-    const info = await transporter.sendMail(mailOptions);
-    logger.info(`✅ Email sent successfully. Message ID: ${info.messageId}`);
-    return info;
   } catch (err: any) {
-    if (retries > 0) {
-      logger.warn(`⚠️ Email send failed, retrying... (${retries} attempts left). Error: ${err.message}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return sendWithRetry(mailOptions, retries - 1);
-    }
-    logger.error(`❌ Final email send failure: ${err.message}`);
-    throw err;
-  }
-}
-
-/**
- * Asynchronous non-blocking wrapper for email dispatch
- */
-export async function sendEmailSafe(mailOptions: any): Promise<boolean> {
-  try {
-    await sendWithRetry(mailOptions);
-    return true;
-  } catch (error: any) {
-    logger.error(`❌ Email dispatch FAILED for ${mailOptions.to}: ${error.message}`);
+    logger.error(`❌ [brevo] HTTP error: ${err.message}`);
     return false;
   }
 }
 
-export const sendVerificationEmail = async (email: string, token: string) => {
-  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const verificationUrl = `${frontendUrl}/verify-email/${token}`;
+// --------------------------------------------------------------------------
+// Helper — convert Buffer → base64 data-URI string for Brevo's
+// `content.disposition` inline-attachment field.
+// --------------------------------------------------------------------------
+function bufferToBase64DataUri(buf: Buffer, mimeType: string): string {
+  const b64 = buf.toString('base64');
+  return `data:${mimeType};base64,${b64}`;
+}
 
-  const mailOptions = {
-    from: `"PULSE Platform" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
-    to: email,
-    subject: 'Verify your PULSE Account',
-    html: `
-      <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
-        <h1 style="color: #6366f1;">Welcome to PULSE</h1>
-        <p>Click the button below to activate your account and join the mission.</p>
-        <a href="${verificationUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Verify Account</a>
-        <p style="color: #666; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
-      </div>
-    `,
-  };
+// --------------------------------------------------------------------------
+// Public API
+// --------------------------------------------------------------------------
 
-  logger.info(`📧 Sending verification email to ${email}`);
-  return sendEmailSafe(mailOptions);
-};
+interface SendBookingConfirmationParams {
+  email:      string;
+  eventName:  string;
+  bookingId:  string;
+  qrBuffer:   Buffer;
+  pdfBuffer:  Buffer;
+}
 
-export const sendBookingConfirmation = async (
-  email: string,
-  eventName: string,
-  bookingId: string,
-  qrCodeBuffer: Buffer,
-  pdfBuffer: Buffer
-) => {
-  const mailOptions = {
-    from: `"PULSE Orders" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
-    to: email,
-    subject: `Your Mission Pass: ${eventName}`,
-    html: `
-      <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
-        <h1 style="color: #6366f1;">Mission Confirmed</h1>
+/**
+ * Sends a booking-confirmation email via Brevo.
+ *
+ * Attachments
+ *   ticket.pdf   – the PDF boarding pass (inline-listed, binary)
+ *   qrcode.png   – the QR code image embedded in the HTML body
+ *
+ * Returns `true` on HTTP 2xx, `false` on any failure.
+ */
+export async function sendBookingConfirmation({
+  email,
+  eventName,
+  bookingId,
+  qrBuffer,
+  pdfBuffer,
+}: SendBookingConfirmationParams): Promise<boolean> {
+  logger.info(`📧 [brevo] Sending booking confirmation → ${email} | booking=${bookingId}`);
+
+  const qrBase64  = qrBuffer.toString('base64');
+  const pdfBase64 = pdfBuffer.toString('base64');
+
+  const payload: Record<string, any> = {
+    sender:      { email: SENDER_EMAIL, name: SENDER_NAME },
+    to:          [{ email }],
+    subject:     `Your Mission Pass: ${eventName}`,
+    htmlContent: `
+      <div style="font-family:sans-serif;background:#0a0a0a;color:white;padding:40px;
+                  border-radius:12px;max-width:600px">
+        <h1 style="color:#6366f1">Mission Confirmed</h1>
         <p>Your booking for <strong>${eventName}</strong> is secured.</p>
-        <p>Booking ID: <code style="background: #1a1a1a; padding: 4px 8px; border-radius: 4px;">${bookingId}</code></p>
-        <div style="background: #ffffff; padding: 20px; display: inline-block; border-radius: 8px; margin: 20px 0;">
-           <img src="cid:qrcode" alt="QR Code" width="150" height="150" />
+        <p>Booking ID:
+          <code style="background:#1a1a1a;padding:4px 8px;border-radius:4px">
+            ${bookingId}
+          </code>
+        </p>
+        <div style="background:#fff;padding:20px;display:inline-block;border-radius:8px;
+                    margin:20px 0">
+          <img src="cid:qrcode" alt="QR Code" width="150" height="150"/>
         </div>
-        <p>Find your E-Ticket attached as a PDF to this email.</p>
-        <p style="color: #666; font-size: 12px;">See you at the drop-off point.</p>
-      </div>
-    `,
-    attachments: [
-      {
-        filename: 'ticket.pdf',
-        content: pdfBuffer,
-      },
+        <p>Your QR code is embedded above. Your E-Ticket PDF is attached to
+           this email.</p>
+        <p style="color:#666;font-size:12px">
+          See you at the drop-off point.
+        </p>
+      </div>`,
+    // Inline QR image — rendered inside the HTML via cid:qrcode
+    inlineImage: [
       {
         filename: 'qrcode.png',
-        content: qrCodeBuffer,
-        cid: 'qrcode'
-      }
+        content:  qrBase64,
+        cid:      'qrcode',
+      } as any,
+    ],
+    // PDF ticket as a file attachment
+    attachment: [
+      {
+        name:     'ticket.pdf',
+        content:  pdfBase64,
+        mimetype: 'application/pdf',
+      } as any,
     ],
   };
 
-  logger.info(`📧 Sending booking confirmation to ${email} for event: ${eventName} (Booking ID: ${bookingId})`);
-  return sendEmailSafe(mailOptions);
-};
+  const ok = await sendViaBrevo(payload);
 
-export const sendEventReminder = async (email: string, eventName: string, eventDate: string) => {
-  const mailOptions = {
-    from: `"PULSE Reminders" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
-    to: email,
-    subject: `Reminder: ${eventName} is coming up!`,
-    html: `<p>Your mission for <strong>${eventName}</strong> starts on ${eventDate}. Check your tickets in the portal.</p>`,
+  if (ok) {
+    logger.info(`✅ [brevo] Booking confirmation sent → ${email}`);
+  } else {
+    logger.error(`❌ [brevo] Booking confirmation FAILED → ${email}`);
+  }
+
+  return ok;
+}
+
+// --------------------------------------------------------------------------
+interface VerificationEmailParams {
+  email:    string;
+  userName: string;
+  token:    string;
+}
+
+/**
+ * Sends an account-verification email via Brevo.
+ */
+export async function sendVerificationEmail({
+  email,
+  userName,
+  token,
+}: VerificationEmailParams): Promise<boolean> {
+  const frontendUrl =
+    (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const verifyUrl = `${frontendUrl}/verify-email/${token}`;
+
+  logger.info(`📧 [brevo] Sending verification email → ${email}`);
+
+  const payload: Record<string, any> = {
+    sender:      { email: SENDER_EMAIL, name: SENDER_NAME },
+    to:          [{ email }],
+    subject:     'Verify your PULSE Account',
+    htmlContent: `
+      <div style="font-family:sans-serif;background:#0a0a0a;color:white;padding:40px;
+                  border-radius:12px;max-width:600px">
+        <h1 style="color:#6366f1">Welcome to PULSE, ${userName}!</h1>
+        <p>Click the button below to activate your account and join the mission.</p>
+        <a href="${verifyUrl}"
+           style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;
+                  text-decoration:none;border-radius:6px;font-weight:bold;margin:20px 0">
+          Verify Account
+        </a>
+        <p style="color:#666;font-size:12px">
+          If you didn't request this, you can safely ignore this email.
+        </p>
+      </div>`,
   };
-  
-  logger.info(`📧 Sending event reminder to ${email} for event: ${eventName}`);
-  return sendEmailSafe(mailOptions);
-};
 
-export const sendBulkAnnouncement = async (emails: string[], subject: string, message: string) => {
-  const mailOptions = {
-    from: `"PULSE Broadcast" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
-    to: emails.join(','),
-    subject: `[Pulse Announcement] ${subject}`,
-    html: `<div>${message}</div>`,
-  };
+  const ok = await sendViaBrevo(payload);
 
-  logger.info(`📧 Sending bulk announcement to ${emails.length} recipients with subject: ${subject}`);
-  return sendEmailSafe(mailOptions);
-};
+  if (ok) {
+    logger.info(`✅ [brevo] Verification email sent → ${email}`);
+  } else {
+    logger.error(`❌ [brevo] Verification email FAILED → ${email}`);
+  }
 
-export const sendForgotPasswordEmail = async (email: string, token: string) => {
-  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  return ok;
+}
+
+// --------------------------------------------------------------------------
+interface ForgotPasswordEmailParams {
+  email:    string;
+  userName: string;
+  token:    string;
+}
+
+/**
+ * Sends a password-reset email via Brevo.
+ */
+export async function sendForgotPasswordEmail({
+  email,
+  userName,
+  token,
+}: ForgotPasswordEmailParams): Promise<boolean> {
+  const frontendUrl =
+    (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
   const resetUrl = `${frontendUrl}/reset-password/${token}`;
-  
-  const mailOptions = {
-    from: `"PULSE Security" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
-    to: email,
-    subject: 'Password Reset Request',
-    html: `
-      <div style="font-family: sans-serif; background: #0a0a0a; color: white; padding: 40px; border-radius: 12px; max-width: 600px;">
-        <h1 style="color: #6366f1;">Access Recovery</h1>
-        <p>We received a request to reset your password. Click the button below to proceed.</p>
-        <a href="${resetUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">Reset Password</a>
-        <p style="color: #666; font-size: 12px;">This link will expire in 1 hour.</p>
-      </div>
-    `,
+
+  logger.info(`📧 [brevo] Sending password-reset email → ${email}`);
+
+  const payload: Record<string, any> = {
+    sender:      { email: SENDER_EMAIL, name: SENDER_NAME },
+    to:          [{ email }],
+    subject:     ' Password Reset Request',
+    htmlContent: `
+      <div style="font-family:sans-serif;background:#0a0a0a;color:white;padding:40px;
+                  border-radius:12px;max-width:600px">
+        <h1 style="color:#6366f1">Access Recovery, ${userName}</h1>
+        <p>We received a request to reset your password. Click the button below
+           to proceed.</p>
+        <a href="${resetUrl}"
+           style="display:inline-block;background:#6366f1;color:white;padding:12px 24px;
+                  text-decoration:none;border-radius:6px;font-weight:bold;margin:20px 0">
+          Reset Password
+        </a>
+        <p style="color:#666;font-size:12px">This link will expire in 1 hour.</p>
+      </div>`,
   };
-  
-  logger.info(`📧 Sending password reset email to ${email}`);
-  return sendEmailSafe(mailOptions);
-};
+
+  const ok = await sendViaBrevo(payload);
+
+  if (ok) {
+    logger.info(`✅ [brevo] Password-reset email sent → ${email}`);
+  } else {
+    logger.error(`❌ [brevo] Password-reset email FAILED → ${email}`);
+  }
+
+  return ok;
+}
+
+// --------------------------------------------------------------------------
+interface BulkAnnouncementParams {
+  emails:    string[];
+  subject:   string;
+  message:   string;
+}
+
+/**
+ * Sends a one-to-many broadcast announcement via Brevo.
+ * Upserts recipients individually so a partial failure does not cancel
+ * the whole batch.
+ */
+export async function sendBulkAnnouncement({
+  emails,
+  subject,
+  message,
+}: BulkAnnouncementParams): Promise<{ sent: number; failed: number }> {
+  logger.info(
+    `📧 [brevo] Broadcasting to ${emails.length} recipients | subject="${subject}"`,
+  );
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const email of emails) {
+    const payload: Record<string, any> = {
+      sender:    { email: SENDER_EMAIL, name: SENDER_NAME },
+      to:        [{ email }],
+      subject:   `[Pulse Announcement] ${subject}`,
+      htmlContent: `<div style="font-family:sans-serif;padding:20px">${message}</div>`,
+    };
+
+    const ok = await sendViaBrevo(payload);
+    ok ? sent++ : failed++;
+  }
+
+  logger.info(`📧 [brevo] Broadcast complete | sent=${sent} failed=${failed}`);
+  return { sent, failed };
+}

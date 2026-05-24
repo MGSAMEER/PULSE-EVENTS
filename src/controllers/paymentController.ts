@@ -1,14 +1,14 @@
-import { Request, Response } from 'express';
+import Request, Response} from 'express';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import QRCode from 'qrcode';
 import Booking from '../models/Booking';
-import Payment from '../models/Payment';
-import { generateQRData } from '../utils/qrGenerator';
-import { addEmailToQueue } from '../queues/emailQueue';
-import { ApiResponseUtil } from '../utils/response';
-import { AppError } from '../utils/errors';
-import logger from '../utils/logger';
+|import Payment from '../models/Payment';
+|import { generateQRData } from '../utils/qrGenerator';
+|import { ApiResponseUtil } from '../utils/response';
+|import { AppError } from '../utils/errors';
+|import logger from '../utils/logger';
++import { sendBookingConfirmation } from '../utils/emailService';
 
 const getRazorpayInstance = () => {
   const key_id = (process.env.RAZORPAY_KEY_ID || '').trim();
@@ -156,10 +156,85 @@ export const verifyPayment = async (req: Request, res: Response) => {
 
     logger.info(`Booking ${booking._id} confirmed via payment ${razorpay_payment_id}`);
 
-    // 6. 📨 ENQUEUE EMAIL NOTIFICATION (Scalable & Reliable)
-    addEmailToQueue(booking).catch(err => {
-      logger.error(`Failed to enqueue email for booking ${booking._id}: ${err.message}`);
-    });
+    // 6. 📨 SEND BOOKING CONFIRMATION EMAIL (non-blocking, no Redis / BullMQ)
+    //
+    // Email is dispatched AFTER the HTTP response is already committed to the
+    // client.  Any failure is caught and logged — it never propagates back to
+    // the caller and never changes the payment / booking status.
+    const userEmail = (booking.userId as any)?.email;
+    const eventName  = (booking.eventId as any)?.name;
+
+    if (userEmail) {
+      setImmediate(() => {
+        (async () => {
+          try {
+            logger.info(
+              `📧 [email] Starting async dispatch | booking=${booking._id} to=${userEmail}`,
+            );
+
+            // ── QR buffer ──────────────────────────────────────────────────
+            const qrBuffer = await QRCode.toBuffer(booking.qrCode || '', {
+              errorCorrectionLevel: 'H',
+              margin: 1,
+              width:  150,
+            });
+            logger.info(
+              `📧 [email] QR buffer ready | ${booking._id} (${qrBuffer.length} bytes)`,
+            );
+
+            // ── PDF buffer ─────────────────────────────────────────────────
+            const { generateTicketPDF } = await import('../utils/pdfGenerator');
+            const pdfBuffer = await generateTicketPDF(
+              booking as any,
+              booking.eventId as any,
+              qrBuffer,
+            );
+            logger.info(
+              `📧 [email] PDF buffer ready | ${booking._id} (${pdfBuffer.length} bytes)`,
+            );
+
+            // ── Brevo send ─────────────────────────────────────────────────
+            const sent = await sendBookingConfirmation(
+              userEmail,
+              eventName || 'Your Event',
+              booking._id.toString(),
+              qrBuffer,
+              pdfBuffer,
+            );
+
+            if (sent) {
+              // Stamp the booking only on real HTTP 2xx from Brevo.
+              // This keeps local DB truth consistent with what Brevo accepted.
+              await Booking.findByIdAndUpdate(booking._id, {
+                emailStatus: 'SENT',
+              } as any);
+              logger.info(
+                `✅ [email] Confirmation delivered | booking=${booking._id} to=${userEmail}`,
+              );
+            } else {
+              await Booking.findByIdAndUpdate(booking._id, {
+               ailStatus: 'FAILED',
+              } as any);
+              logger.error(
+                `❌ [email] sendBookingConfirmation returned false | booking=${booking._id}`,
+              );
+            }
+          } catch (err: any) {
+            await Booking.findByIdAndUpdate(booking._id, {
+              emailStatus: 'FAILED',
+            } as any);
+            logger.error(
+              `❌ [email] Async dispatch failed | booking=${booking._id} ` +
+              `| error=${err.message} | code=${err.code}`,
+            );
+          }
+        })();
+      });
+    } else {
+      logger.warn(
+        `⚠️ [email] No user email on booking ${booking._id}  — email skipped`,
+      );
+<parameter>
 
     return ApiResponseUtil.success(res, 'Payment verified and booking confirmed successfully', {
       bookingId: booking._id,

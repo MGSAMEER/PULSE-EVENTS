@@ -30,12 +30,12 @@
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.5",
     "pdfkit": "^0.18.0",
     "puppeteer-core": "^24.40.0",
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.6",
-    "winston": "^3.19.0"
+    "winston": "^3.19.0",
+    "@getbrevo/brevo": "^4.3.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -45,7 +45,6 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.5.7",
     "@types/node-cron": "^3.0.11",
-    "@types/nodemailer": "^6.4.23",
     "@types/pdfkit": "^0.17.5",
     "@types/qrcode": "^1.5.6",
     "ts-node-dev": "^2.0.0",
