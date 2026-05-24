@@ -287,3 +287,50 @@ export async function sendBulkAnnouncement({
   logger.info(`📧 [brevo] Broadcast complete | sent=${sent} failed=${failed}`);
   return { sent, failed };
 }
+
+// --------------------------------------------------------------------------
+interface EventReminderParams {
+  email:    string;
+  eventName: string;
+  eventDate: string;
+}
+
+/**
+ * Sends an event-reminder email via Brevo. Kept here so the scheduler
+ * (utils/scheduler.ts) can import it without changing its call-site.
+ */
+export async function sendEventReminder({
+  email,
+  eventName,
+  eventDate,
+}: EventReminderParams): Promise<boolean> {
+  logger.info(
+    `📧 [brevo] Sending event reminder → ${email} | event=${eventName}`,
+  );
+
+  const payload = {
+    sender:      { email: SENDER_EMAIL, name: SENDER_NAME },
+    to: [{ email }],
+    subject: `Reminder: ${eventName} is coming up!`,
+    htmlContent: `
+      <div style="font-family:sans-serif;background:#0a0a0a;color:white;padding:40px;
+                  border-radius:12px;max-width:600px">
+        <h1 style="color:#6366f1">See you soon!</h1>
+        <p>Your mission for <strong>${eventName}</strong> starts on ${eventDate}.
+           Check your ticket in the portal.</p>
+        <p style="color:#666;font-size:12px">
+          This is an automated reminder from PULSE Events.
+        </p>
+      </div>`,
+  };
+
+  const ok = await sendViaBrevo(payload);
+  ok
+    ? logger.info(
+        `✅ [brevo] Event reminder sent → ${email} | event=${eventName}`,
+      )
+    : logger.error(
+        `❌ [brevo] Event reminder FAILED → ${email} | event=${eventName}`,
+      );
+  return ok;
+}

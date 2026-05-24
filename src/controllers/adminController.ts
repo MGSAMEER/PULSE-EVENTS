@@ -120,7 +120,7 @@ export const broadcastAnnouncement = async (req: Request, res: Response) => {
     }
 
     const emails = targetUsers.map(u => u.email);
-    await sendBulkAnnouncement(emails, subject, message);
+    await sendBulkAnnouncement({ emails, subject, message });
 
     return ApiResponseUtil.success(res, `Announcement sent to ${targetUsers.length} users`);
   } catch (error: any) {

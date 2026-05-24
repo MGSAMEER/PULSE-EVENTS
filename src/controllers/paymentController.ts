@@ -1,14 +1,14 @@
-import Request, Response} from 'express';
+import { Request, Response } from 'express';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import QRCode from 'qrcode';
 import Booking from '../models/Booking';
-|import Payment from '../models/Payment';
-|import { generateQRData } from '../utils/qrGenerator';
-|import { ApiResponseUtil } from '../utils/response';
-|import { AppError } from '../utils/errors';
-|import logger from '../utils/logger';
-+import { sendBookingConfirmation } from '../utils/emailService';
+import Payment from '../models/Payment';
+import { generateQRData } from '../utils/qrGenerator';
+import { ApiResponseUtil } from '../utils/response';
+import { AppError } from '../utils/errors';
+import logger from '../utils/logger';
+import { sendBookingConfirmation } from '../utils/emailService';
 
 const getRazorpayInstance = () => {
   const key_id = (process.env.RAZORPAY_KEY_ID || '').trim();
@@ -194,13 +194,13 @@ export const verifyPayment = async (req: Request, res: Response) => {
             );
 
             // ── Brevo send ─────────────────────────────────────────────────
-            const sent = await sendBookingConfirmation(
-              userEmail,
-              eventName || 'Your Event',
-              booking._id.toString(),
+            const sent = await sendBookingConfirmation({
+              email:     userEmail,
+              eventName: eventName || 'Your Event',
+              bookingId: booking._id.toString(),
               qrBuffer,
               pdfBuffer,
-            );
+            });
 
             if (sent) {
               // Stamp the booking only on real HTTP 2xx from Brevo.
@@ -234,7 +234,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
       logger.warn(
         `⚠️ [email] No user email on booking ${booking._id}  — email skipped`,
       );
-<parameter>
+    }
 
     return ApiResponseUtil.success(res, 'Payment verified and booking confirmed successfully', {
       bookingId: booking._id,

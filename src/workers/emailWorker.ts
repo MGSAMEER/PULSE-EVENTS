@@ -43,13 +43,13 @@ export const emailWorker = new Worker(
       const pdfBuffer = await generateTicketPDF(booking, booking.eventId, qrBuffer);
 
       // 3. Send Email
-      const emailSent = await sendBookingConfirmation(
-        userEmail,
-        eventName,
-        booking._id.toString(),
+      const emailSent = await sendBookingConfirmation({
+        email:     userEmail,
+        eventName: eventName,
+        bookingId: booking._id.toString(),
         qrBuffer,
-        pdfBuffer
-      );
+        pdfBuffer,
+      });
 
       if (emailSent) {
         await Booking.findByIdAndUpdate(bookingId, { emailStatus: 'SENT' });

@@ -24,16 +24,16 @@ export const scheduleReminders = () => {
         const eventDate = new Date((booking.eventId as any).date);
         if (eventDate >= tomorrow && eventDate < dayAfter) {
           // Send reminder email
-          sendEventReminder(
-            (booking.userId as any).email,
-            (booking.eventId as any).name,
-            eventDate.toLocaleDateString()
-          ).catch(err => {
+          sendEventReminder({
+            email:    (booking.userId as any).email,
+            eventName: (booking.eventId as any).name,
+            eventDate: eventDate.toLocaleDateString(),
+          }).catch((err: any) => {
             logger.error(`Background reminder failure for ${booking._id}: ${err.message}`);
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in reminder scheduler:', error);
     }
   });
