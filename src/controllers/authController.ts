@@ -90,6 +90,11 @@ export const googleLogin: RequestHandler = async (req, res) => {
 export const register: RequestHandler = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
+
+    if (!email || !password || !name) {
+      throw new AppError('Missing required registration fields', 400);
+    }
+
     const normalizedEmail = email.toLowerCase();
 
     const existingUser = await User.findOne({ email: normalizedEmail });
@@ -113,14 +118,26 @@ export const register: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`User registered: ${email} [${user.role}]. Verification token generated.`);
 
-    // Dispatch verification email in background (non-blocking)
-    sendVerificationEmail({
-      email:    normalizedEmail,
-      userName: user.name,
-      token:    verificationToken,
-    }).catch(err => {
-      logger.error(`Background verification email failure for ${normalizedEmail}: ${err.message}`);
-    });
+    // Dispatch verification email and ensure we get diagnostic logs.
+    console.log('📧 Sending verification email...');
+    try {
+      const ok = await sendVerificationEmail({
+        email:    normalizedEmail,
+        userName: user.name,
+        token:    verificationToken,
+      });
+
+      if (ok) {
+        console.log('✅ Email sent');
+        logger.info(`Verification email dispatched → ${normalizedEmail}`);
+      } else {
+        console.error('❌ Email failed: Brevo returned non-OK status');
+        logger.error(`Verification email returned non-OK → ${normalizedEmail}`);
+      }
+    } catch (err: any) {
+      console.error('❌ Email failed:', err?.message || err);
+      logger.error(`Verification email exception for ${normalizedEmail}: ${err?.message || err}`);
+    }
 
     return ApiResponseUtil.success(res, 'Registration successful. Please verify your email to continue.', { 
       user: { 
@@ -245,14 +262,26 @@ export const forgotPassword: RequestHandler = async (req, res) => {
     await user.save();
     logger.info(`Password reset requested: ${user.email}`);
 
-    // Dispatch reset email in background (non-blocking)
-    sendForgotPasswordEmail({
-      email:    user.email,
-      userName: user.name,
-      token:    resetToken,
-    }).catch(err => {
-      logger.error(`Background password reset email failure for ${user.email}: ${err.message}`);
-    });
+    // Dispatch reset email with diagnostic logs
+    console.log('📧 Sending password reset email...');
+    try {
+      const ok = await sendForgotPasswordEmail({
+        email:    user.email,
+        userName: user.name,
+        token:    resetToken,
+      });
+
+      if (ok) {
+        console.log('✅ Password-reset email sent');
+        logger.info(`Password reset email dispatched → ${user.email}`);
+      } else {
+        console.error('❌ Password-reset email failed: Brevo returned non-OK status');
+        logger.error(`Password reset email returned non-OK → ${user.email}`);
+      }
+    } catch (err: any) {
+      console.error('❌ Password-reset email failed:', err?.message || err);
+      logger.error(`Password reset email exception for ${user.email}: ${err?.message || err}`);
+    }
 
     return ApiResponseUtil.success(res, 'If your email is registered, a password reset link has been sent.', {});
   } catch (error) {

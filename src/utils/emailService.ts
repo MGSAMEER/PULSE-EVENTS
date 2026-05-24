@@ -20,6 +20,7 @@ async function sendViaBrevo(payload: Record<string, any>): Promise<boolean> {
 
   if (!apiKey) {
     logger.error('❌ [brevo] BREVO_API_KEY is not set in environment variables');
+    console.error('❌ [brevo] BREVO_API_KEY is not set in environment variables');
     return false;
   }
 
@@ -36,16 +37,16 @@ async function sendViaBrevo(payload: Record<string, any>): Promise<boolean> {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      logger.error(
-        `❌ [brevo] API responded ${res.status} ${res.statusText}` +
-        ` | ${JSON.stringify(body)}`,
-      );
+      const msg = `❌ [brevo] API responded ${res.status} ${res.statusText} | ${JSON.stringify(body)}`;
+      logger.error(msg);
+      console.error(msg);
       return false;
     }
 
     return true;
   } catch (err: any) {
     logger.error(`❌ [brevo] HTTP error: ${err.message}`);
+    console.error('❌ [brevo] HTTP error:', err?.message || err);
     return false;
   }
 }
@@ -87,6 +88,7 @@ export async function sendBookingConfirmation({
   qrBuffer,
   pdfBuffer,
 }: SendBookingConfirmationParams): Promise<boolean> {
+  console.log('📧 Brevo email function called: sendBookingConfirmation');
   logger.info(`📧 [brevo] Sending booking confirmation → ${email} | booking=${bookingId}`);
 
   const qrBase64  = qrBuffer.toString('base64');
@@ -138,8 +140,10 @@ export async function sendBookingConfirmation({
 
   if (ok) {
     logger.info(`✅ [brevo] Booking confirmation sent → ${email}`);
+    console.log('✅ Email sent');
   } else {
     logger.error(`❌ [brevo] Booking confirmation FAILED → ${email}`);
+    console.error('❌ Email failed: booking confirmation');
   }
 
   return ok;
@@ -164,6 +168,7 @@ export async function sendVerificationEmail({
     (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
   const verifyUrl = `${frontendUrl}/verify-email/${token}`;
 
+  console.log('📧 Brevo email function called: sendVerificationEmail');
   logger.info(`📧 [brevo] Sending verification email → ${email}`);
 
   const payload: Record<string, any> = {
@@ -190,8 +195,10 @@ export async function sendVerificationEmail({
 
   if (ok) {
     logger.info(`✅ [brevo] Verification email sent → ${email}`);
+    console.log('✅ Email sent');
   } else {
     logger.error(`❌ [brevo] Verification email FAILED → ${email}`);
+    console.error('❌ Email failed: verification email');
   }
 
   return ok;
@@ -216,6 +223,7 @@ export async function sendForgotPasswordEmail({
     (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
   const resetUrl = `${frontendUrl}/reset-password/${token}`;
 
+  console.log('📧 Brevo email function called: sendForgotPasswordEmail');
   logger.info(`📧 [brevo] Sending password-reset email → ${email}`);
 
   const payload: Record<string, any> = {
@@ -241,8 +249,10 @@ export async function sendForgotPasswordEmail({
 
   if (ok) {
     logger.info(`✅ [brevo] Password-reset email sent → ${email}`);
+    console.log('✅ Email sent');
   } else {
     logger.error(`❌ [brevo] Password-reset email FAILED → ${email}`);
+    console.error('❌ Email failed: password-reset');
   }
 
   return ok;
