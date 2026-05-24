@@ -215,14 +215,25 @@ export async function sendVerificationEmail({
   console.log('📧 [sendVerificationEmail] userName:', userName);
   console.log('📧 [sendVerificationEmail] token exists:', !!token, `(length: ${token?.length})`);
 
+  // ✅ CRITICAL DEBUG: Check FRONTEND_URL environment variable
+  const rawFrontendUrl = process.env.FRONTEND_URL;
+  console.log('🔍 [sendVerificationEmail] RAW FRONTEND_URL from env:', rawFrontendUrl);
+  console.log('🔍 [sendVerificationEmail] NODE_ENV:', process.env.NODE_ENV);
+  
+  if (!rawFrontendUrl) {
+    console.warn('⚠️ [sendVerificationEmail] FRONTEND_URL is NOT SET - using fallback localhost');
+    console.warn('⚠️ [sendVerificationEmail] This should NOT happen in production!');
+    console.warn('⚠️ [sendVerificationEmail] Verify FRONTEND_URL is set in Render environment variables');
+  }
+
   const frontendUrl =
-    (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    (rawFrontendUrl || 'http://localhost:3000').replace(/\/$/, '');
   const verifyUrl = `${frontendUrl}/verify-email/${token}`;
 
-  console.log('📧 [sendVerificationEmail] Frontend URL:', frontendUrl);
-  console.log('📧 [sendVerificationEmail] Verify URL:', verifyUrl);
+  console.log('✅ [sendVerificationEmail] Resolved Frontend URL:', frontendUrl);
+  console.log('✅ [sendVerificationEmail] Verify URL:', verifyUrl);
   console.log('📧 Brevo email function called: sendVerificationEmail');
-  logger.info(`📧 [brevo] Sending verification email → ${email}`);
+  logger.info(`📧 [brevo] Sending verification email → ${email} with URL: ${verifyUrl}`);
 
   const payload: Record<string, any> = {
     sender:      { email: SENDER_EMAIL, name: SENDER_NAME },
@@ -277,12 +288,21 @@ export async function sendForgotPasswordEmail({
   userName,
   token,
 }: ForgotPasswordEmailParams): Promise<boolean> {
+  // ✅ CRITICAL DEBUG: Check FRONTEND_URL environment variable
+  const rawFrontendUrl = process.env.FRONTEND_URL;
+  console.log('🔍 [sendForgotPasswordEmail] RAW FRONTEND_URL from env:', rawFrontendUrl);
+  
+  if (!rawFrontendUrl) {
+    console.warn('⚠️ [sendForgotPasswordEmail] FRONTEND_URL is NOT SET - using fallback localhost');
+  }
+
   const frontendUrl =
-    (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    (rawFrontendUrl || 'http://localhost:3000').replace(/\/$/, '');
   const resetUrl = `${frontendUrl}/reset-password/${token}`;
 
+  console.log('✅ [sendForgotPasswordEmail] Resolved Frontend URL:', frontendUrl);
   console.log('📧 Brevo email function called: sendForgotPasswordEmail');
-  logger.info(`📧 [brevo] Sending password-reset email → ${email}`);
+  logger.info(`📧 [brevo] Sending password-reset email → ${email} with URL: ${resetUrl}`);
 
   const payload: Record<string, any> = {
     sender:      { email: SENDER_EMAIL, name: SENDER_NAME },
